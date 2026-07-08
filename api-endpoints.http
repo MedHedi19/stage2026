@@ -1,0 +1,184 @@
+### IDS/IPS Intelligent Backend REST Endpoints Test File
+@baseUrl = http://localhost:3000
+
+# ==========================================
+# 1. AUTHENTICATION FLOW
+# ==========================================
+
+### 1a. User Login (Admin - Default seed)
+# @name loginAdmin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+### Save admin token from response
+@adminToken = {{loginAdmin.response.body.accessToken}}
+
+
+### 1b. User Login (Analyst - Default seed)
+# @name loginAnalyst
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "analyst",
+  "password": "analyst123"
+}
+
+### Save analyst token from response
+@analystToken = {{loginAnalyst.response.body.accessToken}}
+
+
+### 1c. User Login (Viewer - Default seed)
+# @name loginViewer
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "viewer",
+  "password": "viewer123"
+}
+
+### Save viewer token from response
+@viewerToken = {{loginViewer.response.body.accessToken}}
+
+# ==========================================
+# 2. MFA SETUP & VERIFICATION (TOTP)
+# ==========================================
+
+### 2a. Initiate MFA Setup (Run as Admin)
+# Returns a Google Authenticator TOTP secret and QR code data URI
+# @name setupMfa
+POST {{baseUrl}}/auth/mfa/setup
+Authorization: Bearer {{adminToken}}
+
+### Save MFA secret from setup
+@mfaSecret = {{setupMfa.response.body.secret}}
+
+
+### 2b. Verify and Enable MFA Setup
+# Takes the 6-digit TOTP code (use Google Authenticator or a TOTP tool to generate code using secret)
+POST {{baseUrl}}/auth/mfa/setup/verify
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "code": "123456"
+}
+
+
+### 2c. Verify MFA Login (After Login if MFA is enabled)
+# If MFA is enabled, login returns a tempToken. Use it here with the TOTP code to get the final JWT.
+POST {{baseUrl}}/auth/mfa/verify
+Content-Type: application/json
+
+{
+  "tempToken": "YOUR_TEMP_JWT_TOKEN",
+  "code": "123456"
+}
+
+# ==========================================
+# 3. USERS MANAGEMENT (Admin Only)
+# ==========================================
+
+### 3a. Get Current User Profile (Me)
+GET {{baseUrl}}/users/me
+Authorization: Bearer {{adminToken}}
+
+
+### 3b. List All Users
+GET {{baseUrl}}/users
+Authorization: Bearer {{adminToken}}
+
+
+### 3c. Create a New User
+# @name createUser
+POST {{baseUrl}}/users
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "username": "suricata_operator",
+  "password": "operatorpassword",
+  "role": "analyst"
+}
+
+
+### 3d. Update User
+PUT {{baseUrl}}/users/4
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "role": "admin",
+  "mfaEnabled": false
+}
+
+
+### 3e. Delete User
+DELETE {{baseUrl}}/users/4
+Authorization: Bearer {{adminToken}}
+
+# ==========================================
+# 4. WAZUH INTEGRATION (Alerts & Agents)
+# ==========================================
+
+### 4a. Get Recent Alerts (Analyst or Admin only)
+GET {{baseUrl}}/alerts?severity=10&limit=5
+Authorization: Bearer {{analystToken}}
+
+
+### 4b. Get Dashboard Metrics and Statistics
+GET {{baseUrl}}/alerts/stats
+Authorization: Bearer {{viewerToken}}
+
+
+### 4c. Get Connected Agents Status
+GET {{baseUrl}}/agents/status
+Authorization: Bearer {{viewerToken}}
+
+# ==========================================
+# 5. REPORTS GENERATION (Analyst or Admin only)
+# ==========================================
+
+### 5a. Generate PDF Security Report
+POST {{baseUrl}}/reports/generate
+Authorization: Bearer {{analystToken}}
+Content-Type: application/json
+
+{
+  "format": "pdf",
+  "severity": 8
+}
+
+
+### 5b. Generate Excel Security Report
+POST {{baseUrl}}/reports/generate
+Authorization: Bearer {{analystToken}}
+Content-Type: application/json
+
+{
+  "format": "excel"
+}
+
+
+### 5c. Fetch Generation Logs/History
+GET {{baseUrl}}/reports/history
+Authorization: Bearer {{analystToken}}
+
+# ==========================================
+# 6. AUDIT LOGS (Admin Only)
+# ==========================================
+
+### 6a. Get All Audit Logs
+GET {{baseUrl}}/audit-logs
+Authorization: Bearer {{adminToken}}
+
+
+### 6b. Filter Audit Logs by Action
+GET {{baseUrl}}/audit-logs?action=Login
+Authorization: Bearer {{adminToken}}
