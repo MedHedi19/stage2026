@@ -16,7 +16,7 @@ export class UsersService {
     if (existing) {
       throw new ConflictException('Username already exists');
     }
-    const passwordHash = await bcrypt.hash(passwordPlain, 10);
+    const passwordHash = await bcrypt.hash(passwordPlain, 12);
     const user = this.userRepository.create({
       username,
       passwordHash,
@@ -33,7 +33,7 @@ export class UsersService {
   async findOne(id: number): Promise<User> {
     const user = await this.userRepository.findOne({ where: { id } });
     if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
+      throw new NotFoundException('User not found');
     }
     return user;
   }
@@ -62,7 +62,7 @@ export class UsersService {
     }
 
     if (attrs.password) {
-      user.passwordHash = await bcrypt.hash(attrs.password, 10);
+      user.passwordHash = await bcrypt.hash(attrs.password, 12);
     }
 
     if (attrs.role) {

@@ -11,6 +11,7 @@ import { Logger } from '@nestjs/common';
 })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
+  private lastBroadcastAlertId: string | null = null;
 
   @WebSocketServer()
   server: Server;
@@ -30,15 +31,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   @Interval(5000)
-  pollNewAlerts() {
+  async pollNewAlerts() {
     try {
-      const alert = this.wazuhService.generateNewAlert();
-      this.logger.log(`Broadcasting new real-time alert: ${alert.rule.description} (${alert.id})`);
-      if (this.server) {
-        this.server.emit('new-alert', alert);
+      const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 1 });
+      const latestAlert = alerts[0];
+      if (latestAlert && latestAlert.id !== this.lastBroadcastAlertId) {
+        this.lastBroadcastAlertId = latestAlert.id;
+        this.logger.log(`Broadcasting new real-time alert: ${latestAlert.rule.description} (${latestAlert.id})`);
+        if (this.server) {
+          this.server.emit('new-alert', latestAlert);
+        }
       }
     } catch (error) {
-      this.logger.error(`Error broadcasting real-time alert: ${error.message}`);
+      this.logger.warn(`Realtime polling skipped: ${error.message}`);
     }
   }
 }

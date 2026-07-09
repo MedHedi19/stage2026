@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuditAction } from '../audit/audit-action.decorator';
 import { AuditLogInterceptor } from '../audit/audit-log.interceptor';
+import { LoginDto } from './dto/login.dto';
 
 @Controller('auth')
 @UseInterceptors(AuditLogInterceptor)
@@ -11,8 +12,14 @@ export class AuthController {
 
   @Post('login')
   @AuditAction('Login')
-  async login(@Body() body: any) {
-    return this.authService.login(body.username, body.password);
+  async login(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto.username, loginDto.password);
+  }
+
+  @Post('signup')
+  @AuditAction('Signup')
+  async signup(@Body() body: any) {
+    return this.authService.signup(body.username, body.password);
   }
 
   @Post('mfa/setup')
@@ -36,7 +43,7 @@ export class AuthController {
   @AuditAction('Verify MFA')
   async verifyMfaLogin(@Body() body: any) {
     if (!body.tempToken || !body.code) {
-      throw new UnauthorizedException('tempToken and code are required');
+      throw new UnauthorizedException('Invalid request parameters');
     }
     return this.authService.verifyMfaLogin(body.tempToken, body.code);
   }
