@@ -80,7 +80,7 @@ export class WazuhService {
       }
       throw new Error('Token missing in authentication payload');
     } catch (error) {
-      this.logger.warn(`Wazuh Manager authentication failed: ${error.message}. Operating in Simulated/Offline mode.`);
+      this.logger.error(`Wazuh Manager authentication failed: ${error.message}`, error.stack);
       throw error;
     }
   }
@@ -101,66 +101,71 @@ export class WazuhService {
     endDate?: string;
     limit?: number;
   }): Promise<WazuhAlert[]> {
-    const { url, user, password } = this.getApiConfig();
-    const indexerUrl = url.replace(':55000', ':9200');
+    try {
+      const { url, user, password } = this.getApiConfig();
+      const indexerUrl = url.replace(':55000', ':9200');
 
-    const payload: any = {
-      query: {
-        bool: {
-          must: [],
+      const payload: any = {
+        query: {
+          bool: {
+            must: [],
+          },
         },
-      },
-      sort: [{ timestamp: { order: 'desc' } }],
-      size: filters.limit || 50,
-    };
+        sort: [{ timestamp: { order: 'desc' } }],
+        size: filters.limit || 50,
+      };
 
-    if (filters.severity !== undefined) {
-      payload.query.bool.must.push({
-        range: { 'rule.level': { gte: filters.severity } },
-      });
+      if (filters.severity !== undefined) {
+        payload.query.bool.must.push({
+          range: { 'rule.level': { gte: filters.severity } },
+        });
+      }
+
+      if (filters.ip) {
+        payload.query.bool.must.push({
+          multi_match: {
+            query: filters.ip,
+            fields: ['data.src_ip', 'data.dest_ip', 'agent.ip'],
+          },
+        });
+      }
+
+      if (filters.startDate || filters.endDate) {
+        const range: any = {};
+        if (filters.startDate) range.gte = filters.startDate;
+        if (filters.endDate) range.lte = filters.endDate;
+        payload.query.bool.must.push({ range: { timestamp: range } });
+      }
+
+      if (payload.query.bool.must.length === 0) {
+        payload.query.bool.must.push({ match_all: {} });
+      }
+
+      const response = await lastValueFrom(
+        this.httpService.post(`${indexerUrl}/wazuh-alerts-*/_search`, payload, {
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+          },
+          httpsAgent: this.httpsAgent,
+          timeout: 3000,
+        }),
+      );
+
+      if (response.data && response.data.hits && response.data.hits.hits) {
+        return response.data.hits.hits.map(hit => ({
+          id: hit._id,
+          timestamp: hit._source.timestamp,
+          rule: hit._source.rule,
+          agent: hit._source.agent,
+          data: hit._source.data || {},
+        }));
+      }
+
+      throw new Error('Wazuh alerts payload is empty');
+    } catch (error) {
+      this.logger.error(`Wazuh Indexer search failed: ${error.message}`, error.stack);
+      throw error;
     }
-
-    if (filters.ip) {
-      payload.query.bool.must.push({
-        multi_match: {
-          query: filters.ip,
-          fields: ['data.src_ip', 'data.dest_ip', 'agent.ip'],
-        },
-      });
-    }
-
-    if (filters.startDate || filters.endDate) {
-      const range: any = {};
-      if (filters.startDate) range.gte = filters.startDate;
-      if (filters.endDate) range.lte = filters.endDate;
-      payload.query.bool.must.push({ range: { timestamp: range } });
-    }
-
-    if (payload.query.bool.must.length === 0) {
-      payload.query.bool.must.push({ match_all: {} });
-    }
-
-    const response = await lastValueFrom(
-      this.httpService.post(`${indexerUrl}/wazuh-alerts-*/_search`, payload, {
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
-        },
-        httpsAgent: this.httpsAgent,
-        timeout: 3000,
-      }),
-    );
-
-    if (response.data && response.data.hits && response.data.hits.hits) {
-      return response.data.hits.hits.map(hit => ({
-        id: hit._id,
-        timestamp: hit._source.timestamp,
-        rule: hit._source.rule,
-        agent: hit._source.agent,
-        data: hit._source.data || {},
-      }));
-    }
-
-    throw new Error('Wazuh alerts payload is empty');
   }
 
   async getAlertStats(filters: { startDate?: string; endDate?: string }): Promise<any> {
@@ -221,21 +226,26 @@ export class WazuhService {
   }
 
   async requestWazuh(endpoint: string, method: 'GET' | 'POST' = 'GET', data?: any): Promise<any> {
-    const { url } = this.getApiConfig();
-    const token = await this.getWazuhToken();
+    try {
+      const { url } = this.getApiConfig();
+      const token = await this.getWazuhToken();
 
-    const options = {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      httpsAgent: this.httpsAgent,
-      timeout: 3000,
-    };
+      const options = {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        httpsAgent: this.httpsAgent,
+        timeout: 3000,
+      };
 
-    const response = method === 'POST'
-      ? await lastValueFrom(this.httpService.post(`${url}${endpoint}`, data, options))
-      : await lastValueFrom(this.httpService.get(`${url}${endpoint}`, options));
+      const response = method === 'POST'
+        ? await lastValueFrom(this.httpService.post(`${url}${endpoint}`, data, options))
+        : await lastValueFrom(this.httpService.get(`${url}${endpoint}`, options));
 
-    return response.data;
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Wazuh API request failed [${method} ${endpoint}]: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }
