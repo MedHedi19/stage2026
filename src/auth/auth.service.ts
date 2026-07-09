@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
-import { generateSecret, generateURI, verifySync } from 'otplib';
+import { authenticator } from 'otplib';
 import * as qrcode from 'qrcode';
 import * as bcrypt from 'bcrypt';
 
@@ -60,12 +60,8 @@ export class AuthService {
 
   async setupMfa(userId: number) {
     const user = await this.usersService.findOne(userId);
-    const secret = generateSecret();
-    const otpauthUrl = generateURI({
-      issuer: 'IDS-IPS-Intelligent',
-      label: user.username,
-      secret,
-    });
+    const secret = authenticator.generateSecret();
+    const otpauthUrl = authenticator.keyuri(user.username, 'IDS-IPS-Intelligent', secret);
 
     await this.usersService.update(userId, { mfaSecret: secret });
 
@@ -85,11 +81,7 @@ export class AuthService {
       throw new BadRequestException('MFA not set up yet');
     }
 
-    const mfaRes = verifySync({
-      token: code,
-      secret: user.mfaSecret,
-    });
-    const isValid = mfaRes && mfaRes.valid;
+    const isValid = authenticator.check(code, user.mfaSecret);
 
     if (!isValid) {
       throw new UnauthorizedException('Invalid verification code');
@@ -127,11 +119,7 @@ export class AuthService {
       throw new UnauthorizedException('MFA configuration mismatch');
     }
 
-    const mfaRes = verifySync({
-      token: code,
-      secret: user.mfaSecret,
-    });
-    const isValid = mfaRes && mfaRes.valid;
+    const isValid = authenticator.check(code, user.mfaSecret);
 
     if (!isValid) {
       throw new UnauthorizedException('Invalid verification code');
