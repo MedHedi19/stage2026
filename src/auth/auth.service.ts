@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
+import { UserRole } from '../users/entities/user.entity';
 import { authenticator } from 'otplib';
 import * as qrcode from 'qrcode';
 import * as bcrypt from 'bcrypt';
@@ -54,7 +55,7 @@ export class AuthService {
       throw new BadRequestException('Username already exists');
     }
 
-    const user = await this.usersService.create(username, password, 'viewer');
+    const user = await this.usersService.create(username, password, UserRole.VIEWER);
     
     return {
       message: 'User created successfully',
