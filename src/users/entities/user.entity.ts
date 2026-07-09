@@ -27,7 +27,7 @@ export class User {
   @Column({ default: false })
   mfaEnabled: boolean;
 
-  @Column({ nullable: true, select: false })
+  @Column({ type: 'varchar', length: 255, nullable: true, select: false })
   mfaSecret: string | null;
 
   @CreateDateColumn()
