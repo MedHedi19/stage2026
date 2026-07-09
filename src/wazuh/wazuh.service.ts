@@ -52,13 +52,6 @@ export class WazuhService {
     return { url, user, password };
   }
 
-  private getIndexerConfig() {
-    const user = this.configService.get<string>('WAZUH_INDEXER_USER') || 'admin';
-    const password = this.configService.get<string>('WAZUH_INDEXER_PASSWORD') ||
-                     this.configService.get<string>('WAZUH_API_PASSWORD') || '';
-    return { user, password };
-  }
-
   async getWazuhToken(): Promise<string> {
     const now = Date.now();
     const cachedToken = this.wazuhToken;
@@ -109,8 +102,7 @@ export class WazuhService {
     limit?: number;
   }): Promise<WazuhAlert[]> {
     try {
-      const { url } = this.getApiConfig();
-      const { user, password } = this.getIndexerConfig();
+      const { url, user, password } = this.getApiConfig();
       const indexerUrl = url.replace(':55000', ':9200');
 
       const payload: any = {
