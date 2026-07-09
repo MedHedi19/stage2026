@@ -63,7 +63,7 @@ export class WazuhService {
     try {
       const authHeader = Buffer.from(`${user}:${password}`).toString('base64');
       const response = await lastValueFrom(
-        this.httpService.get(`${url}/security/user/authenticate`, {
+        this.httpService.post(`${url}/security/user/authenticate`, {}, {
           headers: {
             Authorization: `Basic ${authHeader}`,
           },
