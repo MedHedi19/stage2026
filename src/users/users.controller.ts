@@ -47,7 +47,10 @@ export class UsersController {
 
   @Get()
   @Roles(UserRole.ADMIN)
-  findAll() {
+  findAll(@Request() req) {
+    console.log('[Users] GET /users called');
+    console.log('[Users] User from request:', req.user);
+    console.log('[Users] User role:', req.user?.role);
     return this.usersService.findAll();
   }
 
