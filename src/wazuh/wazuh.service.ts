@@ -123,7 +123,13 @@ export class WazuhService {
     try {
       const { url, user, password } = this.getApiConfig();
       const indexerUrl = url.replace(':55000', ':9200');
+      
+      // Use separate credentials for OpenSearch/Elasticsearch if configured
+      const indexerUser = this.configService.get<string>('WAZUH_INDEXER_USER') || user;
+      const indexerPassword = this.configService.get<string>('WAZUH_INDEXER_PASSWORD') || password;
+      
       console.log('[Wazuh] Fetching alerts from indexer:', indexerUrl);
+      console.log('[Wazuh] Indexer user:', indexerUser);
       console.log('[Wazuh] Filters:', JSON.stringify(filters));
 
       const payload: any = {
@@ -166,7 +172,7 @@ export class WazuhService {
       const response = await lastValueFrom(
         this.httpService.post(`${indexerUrl}/wazuh-alerts-*/_search`, payload, {
           headers: {
-            Authorization: `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`,
+            Authorization: `Basic ${Buffer.from(`${indexerUser}:${indexerPassword}`).toString('base64')}`,
           },
           httpsAgent: this.httpsAgent,
           timeout: 3000,
