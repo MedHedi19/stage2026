@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, ParseIntPipe, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, ParseIntPipe, UseInterceptors, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -18,6 +18,31 @@ export class UsersController {
   @Get('me')
   getProfile(@Request() req) {
     return req.user;
+  }
+
+  @Put('me')
+  @AuditAction('Update Own Profile')
+  async updateMe(@Request() req, @Body() body: { username?: string; currentPassword?: string; newPassword?: string }) {
+    const userId = req.user.id;
+    const attrs: any = {};
+
+    if (body.username) {
+      attrs.username = body.username;
+    }
+
+    if (body.newPassword) {
+      if (!body.currentPassword) {
+        throw new UnauthorizedException('Current password is required to set a new password');
+      }
+      // Verify current password
+      const existing = await this.usersService.verifyPassword(userId, body.currentPassword);
+      if (!existing) {
+        throw new UnauthorizedException('Current password is incorrect');
+      }
+      attrs.password = body.newPassword;
+    }
+
+    return this.usersService.update(userId, attrs);
   }
 
   @Get()

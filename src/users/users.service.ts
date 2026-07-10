@@ -87,4 +87,14 @@ export class UsersService {
     const user = await this.findOne(id);
     await this.userRepository.remove(user);
   }
+
+  async verifyPassword(id: number, plainPassword: string): Promise<boolean> {
+    const user = await this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where('user.id = :id', { id })
+      .getOne();
+    if (!user) return false;
+    return bcrypt.compare(plainPassword, user.passwordHash);
+  }
 }

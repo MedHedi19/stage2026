@@ -56,12 +56,17 @@ export class WazuhService {
     const now = Date.now();
     const cachedToken = this.wazuhToken;
     if (cachedToken && this.tokenExpiry && now < this.tokenExpiry) {
+      console.log('[Wazuh] Using cached token');
       return cachedToken;
     }
 
     const { url, user, password } = this.getApiConfig();
+    console.log('[Wazuh] Attempting authentication to:', url);
+    console.log('[Wazuh] User:', user);
+    console.log('[Wazuh] Password provided:', password ? 'YES' : 'NO');
     try {
       const authHeader = Buffer.from(`${user}:${password}`).toString('base64');
+      console.log('[Wazuh] Sending auth request...');
       const response = await lastValueFrom(
         this.httpService.post(`${url}/security/user/authenticate`, {}, {
           headers: {
@@ -71,27 +76,41 @@ export class WazuhService {
           timeout: 4000,
         }),
       );
+      console.log('[Wazuh] Auth response status:', response.status);
+      console.log('[Wazuh] Auth response data:', JSON.stringify(response.data));
 
       if (response.data && response.data.data && response.data.data.token) {
         const token = response.data.data.token;
         this.wazuhToken = token;
         this.tokenExpiry = Date.now() + 50 * 60 * 1000;
+        console.log('[Wazuh] Token obtained successfully');
         return token;
       }
       throw new Error('Token missing in authentication payload');
     } catch (error) {
+      console.log('[Wazuh] Auth error:', error.message);
+      console.log('[Wazuh] Auth error code:', error.code);
+      console.log('[Wazuh] Auth error stack:', error.stack);
       this.logger.error(`Wazuh Manager authentication failed: ${error.message}`, error.stack);
       throw error;
     }
   }
 
   async fetchAgents(): Promise<any[]> {
-    const result = await this.requestWazuh('/agents?select=id,name,status,ip,version,os.name');
-    if (result && result.data && result.data.affected_items) {
-      return result.data.affected_items;
-    }
+    console.log('[Wazuh] Fetching agents...');
+    try {
+      const result = await this.requestWazuh('/agents?select=id,name,status,ip,version,os.name');
+      console.log('[Wazuh] Agents result:', JSON.stringify(result));
+      if (result && result.data && result.data.affected_items) {
+        console.log('[Wazuh] Returning', result.data.affected_items.length, 'agents');
+        return result.data.affected_items;
+      }
 
-    throw new Error('Wazuh agents payload is empty');
+      throw new Error('Wazuh agents payload is empty');
+    } catch (error) {
+      console.log('[Wazuh] Fetch agents error:', error.message);
+      throw error;
+    }
   }
 
   async fetchRecentAlerts(filters: {
@@ -104,6 +123,8 @@ export class WazuhService {
     try {
       const { url, user, password } = this.getApiConfig();
       const indexerUrl = url.replace(':55000', ':9200');
+      console.log('[Wazuh] Fetching alerts from indexer:', indexerUrl);
+      console.log('[Wazuh] Filters:', JSON.stringify(filters));
 
       const payload: any = {
         query: {
@@ -141,6 +162,7 @@ export class WazuhService {
         payload.query.bool.must.push({ match_all: {} });
       }
 
+      console.log('[Wazuh] Sending search query to Elasticsearch...');
       const response = await lastValueFrom(
         this.httpService.post(`${indexerUrl}/wazuh-alerts-*/_search`, payload, {
           headers: {
@@ -150,8 +172,11 @@ export class WazuhService {
           timeout: 3000,
         }),
       );
+      console.log('[Wazuh] Elasticsearch response status:', response.status);
+      console.log('[Wazuh] Elasticsearch hits:', response.data?.hits?.total?.value);
 
       if (response.data && response.data.hits && response.data.hits.hits) {
+        console.log('[Wazuh] Returning', response.data.hits.hits.length, 'alerts');
         return response.data.hits.hits.map(hit => ({
           id: hit._id,
           timestamp: hit._source.timestamp,
@@ -163,6 +188,8 @@ export class WazuhService {
 
       throw new Error('Wazuh alerts payload is empty');
     } catch (error) {
+      console.log('[Wazuh] Fetch alerts error:', error.message);
+      console.log('[Wazuh] Fetch alerts error code:', error.code);
       this.logger.error(`Wazuh Indexer search failed: ${error.message}`, error.stack);
       throw error;
     }
@@ -228,6 +255,7 @@ export class WazuhService {
   async requestWazuh(endpoint: string, method: 'GET' | 'POST' = 'GET', data?: any): Promise<any> {
     try {
       const { url } = this.getApiConfig();
+      console.log('[Wazuh] Request:', method, endpoint);
       const token = await this.getWazuhToken();
 
       const options = {
@@ -242,8 +270,11 @@ export class WazuhService {
         ? await lastValueFrom(this.httpService.post(`${url}${endpoint}`, data, options))
         : await lastValueFrom(this.httpService.get(`${url}${endpoint}`, options));
 
+      console.log('[Wazuh] Request successful, status:', response.status);
       return response.data;
     } catch (error) {
+      console.log('[Wazuh] Request error:', error.message);
+      console.log('[Wazuh] Request error code:', error.code);
       this.logger.error(`Wazuh API request failed [${method} ${endpoint}]: ${error.message}`, error.stack);
       throw error;
     }
