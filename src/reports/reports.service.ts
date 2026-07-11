@@ -184,35 +184,22 @@ export class ReportsService {
         doc.text(`Noise Filtered: ${summary.noiseFiltered}`);
         doc.moveDown();
 
-        // Severity Distribution
-        doc.fontSize(12).text('Severity Distribution');
-        Object.entries(summary.severityDistribution).forEach(([level, count]) => {
-          doc.fontSize(10).text(`Level ${level}: ${count} events`);
-        });
-        doc.moveDown();
-
-        // Top Source IPs
-        doc.fontSize(12).text('Top Source IPs');
-        summary.topSourceIPs.forEach(({ ip, count }: any) => {
-          doc.fontSize(10).text(`${ip}: ${count} events`);
-        });
-        doc.moveDown();
 
         // Severity Distribution Chart
         if (Object.keys(summary.severityDistribution).length > 0) {
-          if (doc.y > 600) {
+          if (doc.y > 550) {
             doc.addPage();
           }
           
-          doc.fontSize(12).text('Severity Distribution Chart');
+          doc.fontSize(14).text('Severity Distribution');
           doc.moveDown();
           
           const chartX = 50;
           const chartY = doc.y;
           const chartWidth = 500;
-          const chartHeight = 120;
+          const chartHeight = 100;
           const severityKeys = Object.keys(summary.severityDistribution);
-          const barWidth = chartWidth / severityKeys.length - 10;
+          const barWidth = chartWidth / severityKeys.length - 15;
           const severityValues = Object.values(summary.severityDistribution) as number[];
           const maxCount = Math.max(...severityValues);
           
@@ -220,8 +207,8 @@ export class ReportsService {
           
           Object.entries(summary.severityDistribution).forEach(([level, count], index) => {
             const countNum = count as number;
-            const barHeight = (countNum / maxCount) * (chartHeight - 30);
-            const x = chartX + 10 + index * (barWidth + 10);
+            const barHeight = (countNum / maxCount) * (chartHeight - 25);
+            const x = chartX + 15 + index * (barWidth + 15);
             const y = chartY + chartHeight - barHeight - 15;
             
             // Color based on severity
@@ -237,43 +224,43 @@ export class ReportsService {
             };
             doc.rect(x, y, barWidth, barHeight).fill(colors[level] || '#4169E1');
             
-            doc.fontSize(7).fillColor('black').text(`L${level}`, x, chartY + chartHeight + 5);
-            doc.text(countNum.toString(), x + barWidth/2 - 5, y - 10);
+            doc.fontSize(8).fillColor('black').text(`L${level}`, x, chartY + chartHeight + 8);
+            doc.text(countNum.toString(), x + barWidth/2 - 5, y - 12);
           });
           
-          doc.moveDown(15);
+          doc.moveDown(12);
         }
 
         // Top Source IPs Chart
         if (summary.topSourceIPs.length > 0) {
-          if (doc.y > 600) {
+          if (doc.y > 550) {
             doc.addPage();
           }
           
-          doc.fontSize(12).text('Top Source IPs Chart');
+          doc.fontSize(14).text('Top Source IPs');
           doc.moveDown();
           
           const chartX = 50;
           const chartY = doc.y;
           const chartWidth = 500;
-          const chartHeight = 120;
-          const barWidth = chartWidth / summary.topSourceIPs.length - 10;
+          const chartHeight = 100;
+          const barWidth = chartWidth / summary.topSourceIPs.length - 15;
           const maxCount = Math.max(...summary.topSourceIPs.map((ip: any) => ip.count));
           
           doc.rect(chartX, chartY, chartWidth, chartHeight).stroke();
           
           summary.topSourceIPs.forEach(({ ip, count }: any, index) => {
-            const barHeight = (count / maxCount) * (chartHeight - 30);
-            const x = chartX + 10 + index * (barWidth + 10);
+            const barHeight = (count / maxCount) * (chartHeight - 25);
+            const x = chartX + 15 + index * (barWidth + 15);
             const y = chartY + chartHeight - barHeight - 15;
             
             doc.rect(x, y, barWidth, barHeight).fill('#4169E1');
             
-            doc.fontSize(6).fillColor('black').text(ip.substring(0, 12), x, chartY + chartHeight + 5);
-            doc.text(count.toString(), x + barWidth/2 - 5, y - 10);
+            doc.fontSize(7).fillColor('black').text(ip.substring(0, 10), x, chartY + chartHeight + 8);
+            doc.text(count.toString(), x + barWidth/2 - 5, y - 12);
           });
           
-          doc.moveDown(15);
+          doc.moveDown(12);
         }
 
         // Security Alerts
