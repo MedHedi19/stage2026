@@ -73,46 +73,35 @@ export class ReportsService {
         doc.on('error', err => reject(err));
 
         // Document Header
-        doc.rect(0, 0, doc.page.width, 100).fill('#0B192C');
-        doc.fillColor('#FFFFFF')
-           .fontSize(22)
-           .text('IDS/IPS CYBERSECURITY DASHBOARD REPORT', 40, 30, { bold: true } as any);
-        doc.fontSize(10)
-           .text(`Date: ${new Date().toLocaleString()} | System Administrator Report`, 40, 60);
-
-        doc.fillColor('#333333');
-        doc.moveDown(4);
-
-        // Parameters summary
-        doc.fontSize(12).text('Report Context', { underline: true } as any);
-        doc.fontSize(10).text(`Filters Applied: ${JSON.stringify(filters)}`);
-        doc.text(`Total Alerts Processed: ${alerts.length}`);
+        doc.fontSize(20).text('IDS/IPS Security Report', { align: 'center' });
+        doc.fontSize(12).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
         doc.moveDown();
 
-        doc.fontSize(12).text('Threat Incident List', { underline: true } as any);
-        doc.moveDown(0.5);
+        // Summary
+        doc.fontSize(14).text('Report Summary');
+        doc.fontSize(10).text(`Total Alerts: ${alerts.length}`);
+        doc.text(`Filters: ${JSON.stringify(filters)}`);
+        doc.moveDown();
 
-        // Alerts loop
-        alerts.forEach((alert, index) => {
-          // If we reach near end of page, add page
-          if (doc.y > 680) {
-            doc.addPage();
-          }
+        // Alerts
+        doc.fontSize(14).text('Alert Details');
+        doc.moveDown();
 
-          doc.rect(40, doc.y, doc.page.width - 80, 50).fillAndStroke('#F1F6F9', '#D9E4EC');
-          
-          doc.fillColor('#D80032')
-             .fontSize(10)
-             .text(`[LVL ${alert.rule.level}] ${alert.rule.description}`, 50, doc.y - 45, { bold: true } as any);
+        if (alerts.length === 0) {
+          doc.fontSize(10).text('No alerts found for the selected filters.');
+        } else {
+          alerts.forEach((alert, index) => {
+            if (doc.y > 700) {
+              doc.addPage();
+            }
 
-          doc.fillColor('#333333')
-             .fontSize(8)
-             .text(`Time: ${alert.timestamp}  |  Host: ${alert.agent.name} (IP: ${alert.agent.ip || 'N/A'})`, 50, doc.y - 30);
-          
-          doc.text(`Source IP: ${alert.data.src_ip || 'N/A'}  -->  Destination IP: ${alert.data.dest_ip || 'N/A'}  |  Proto: ${alert.data.protocol || 'N/A'}`, 50, doc.y - 18);
-          
-          doc.moveDown(1.5);
-        });
+            doc.fontSize(11).text(`${index + 1}. [Level ${alert.rule.level}] ${alert.rule.description}`);
+            doc.fontSize(9).text(`   Time: ${alert.timestamp}`);
+            doc.text(`   Agent: ${alert.agent.name} (${alert.agent.ip || 'N/A'})`);
+            doc.text(`   Source: ${alert.data.src_ip || 'N/A'} -> Dest: ${alert.data.dest_ip || 'N/A'}`);
+            doc.moveDown();
+          });
+        }
 
         doc.end();
       } catch (err) {
