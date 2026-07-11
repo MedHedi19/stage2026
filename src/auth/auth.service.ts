@@ -145,7 +145,13 @@ export class AuthService {
       throw new UnauthorizedException('MFA configuration mismatch');
     }
 
+    console.log('[MFA] Verifying MFA login for user:', username);
+    console.log('[MFA] Code received:', code);
+    console.log('[MFA] Secret stored:', user.mfaSecret);
+
     const isValid = authenticator.check(code, user.mfaSecret);
+
+    console.log('[MFA] Code validation result:', isValid);
 
     if (!isValid) {
       throw new UnauthorizedException('Invalid verification code');
