@@ -8,7 +8,7 @@ import * as bcrypt from 'bcrypt';
 
 // Configure TOTP to handle time drift
 authenticator.options = {
-  window: 2, // Allow codes from 1 time window before and after (total 3 windows)
+  window: 5, // Allow codes from 5 time windows before and after (total 11 windows)
   step: 30, // 30-second time steps
 };
 
