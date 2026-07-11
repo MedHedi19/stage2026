@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Report } from './entities/report.entity';
 import { WazuhService } from '../wazuh/wazuh.service';
-import * as PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit';
 import { Workbook } from 'exceljs';
 
 @Injectable()
@@ -65,7 +65,7 @@ export class ReportsService {
   private async generatePdfBuffer(alerts: any[], filters: any): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       try {
-        const doc = new (PDFDocument as any)({ margin: 40, size: 'A4' });
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
         const chunks: Buffer[] = [];
 
         doc.on('data', chunk => chunks.push(chunk));
