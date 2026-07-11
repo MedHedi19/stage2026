@@ -1,4 +1,5 @@
 import { Controller, Post, Body, UseGuards, Request, UnauthorizedException, UseInterceptors } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuditAction } from '../audit/audit-action.decorator';
@@ -11,12 +12,14 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @AuditAction('Login')
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto.username, loginDto.password);
   }
 
   @Post('signup')
+  @Throttle({ default: { limit: 3, ttl: 3600000 } })
   @AuditAction('Signup')
   async signup(@Body() body: any) {
     return this.authService.signup(body.username, body.password);

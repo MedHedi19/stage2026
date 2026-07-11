@@ -101,14 +101,20 @@ export class AuthService {
       throw new BadRequestException('MFA not set up yet');
     }
 
+    console.log('[MFA] Verifying MFA setup for user:', user.username);
+    console.log('[MFA] Code received:', code);
+    console.log('[MFA] Secret stored:', user.mfaSecret);
+
     const isValid = authenticator.check(code, user.mfaSecret);
+
+    console.log('[MFA] Code validation result:', isValid);
 
     if (!isValid) {
       throw new UnauthorizedException('Invalid verification code');
     }
 
     const updatedUser = await this.usersService.update(userId, { mfaEnabled: true });
-    
+
     return {
       accessToken: this.generateAccessToken(updatedUser),
       user: {

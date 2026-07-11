@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -23,6 +24,21 @@ import { Report } from './reports/entities/report.entity';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => [
+        {
+          ttl: configService.get<number>('THROTTLE_TTL') || 60000,
+          limit: configService.get<number>('THROTTLE_LIMIT') || 100,
+        },
+        {
+          name: 'short',
+          ttl: configService.get<number>('THROTTLE_SHORT_TTL') || 1000,
+          limit: configService.get<number>('THROTTLE_SHORT_LIMIT') || 3,
+        },
+      ],
+    }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -36,7 +52,7 @@ import { Report } from './reports/entities/report.entity';
         entities: [User, AuditLog, Report],
         // synchronize: true should ONLY be used in development.
         // It automatically aligns the MySQL schema with TypeORM definitions on startup.
-        synchronize: true, 
+        synchronize: true,
       }),
     }),
     AuthModule,

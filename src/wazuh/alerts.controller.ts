@@ -1,4 +1,5 @@
 import { Controller, Get, Query, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { WazuhService } from './wazuh.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../roles/roles.guard';
@@ -15,6 +16,7 @@ export class AlertsController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  @Throttle({ default: { limit: 50, ttl: 60000 } })
   @AuditAction('View Alerts')
   async getAlerts(
     @Query('severity') severity?: string,
@@ -34,6 +36,7 @@ export class AlertsController {
 
   @Get('stats')
   @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   async getStats(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,

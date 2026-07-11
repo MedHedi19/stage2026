@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Body, UseGuards, Request, Res, UseInterceptors } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import * as express from 'express';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -16,6 +17,7 @@ export class ReportsController {
 
   @Post('generate')
   @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @AuditAction('Generate report')
   async generateReport(
     @Request() req,
@@ -49,6 +51,7 @@ export class ReportsController {
 
   @Get('history')
   @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   async getHistory() {
     return this.reportsService.getHistory();
   }
