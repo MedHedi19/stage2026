@@ -200,13 +200,17 @@ export class ReportsService {
 
         // Severity Distribution Chart
         if (Object.keys(summary.severityDistribution).length > 0) {
+          if (doc.y > 600) {
+            doc.addPage();
+          }
+          
           doc.fontSize(12).text('Severity Distribution Chart');
           doc.moveDown();
           
           const chartX = 50;
           const chartY = doc.y;
           const chartWidth = 500;
-          const chartHeight = 150;
+          const chartHeight = 120;
           const severityKeys = Object.keys(summary.severityDistribution);
           const barWidth = chartWidth / severityKeys.length - 10;
           const severityValues = Object.values(summary.severityDistribution) as number[];
@@ -216,9 +220,9 @@ export class ReportsService {
           
           Object.entries(summary.severityDistribution).forEach(([level, count], index) => {
             const countNum = count as number;
-            const barHeight = (countNum / maxCount) * (chartHeight - 20);
+            const barHeight = (countNum / maxCount) * (chartHeight - 30);
             const x = chartX + 10 + index * (barWidth + 10);
-            const y = chartY + chartHeight - barHeight - 10;
+            const y = chartY + chartHeight - barHeight - 15;
             
             // Color based on severity
             const colors: Record<string, string> = {
@@ -233,39 +237,43 @@ export class ReportsService {
             };
             doc.rect(x, y, barWidth, barHeight).fill(colors[level] || '#4169E1');
             
-            doc.fontSize(8).fillColor('black').text(`L${level}`, x, chartY + chartHeight + 5);
+            doc.fontSize(7).fillColor('black').text(`L${level}`, x, chartY + chartHeight + 5);
             doc.text(countNum.toString(), x + barWidth/2 - 5, y - 10);
           });
           
-          doc.moveDown(20);
+          doc.moveDown(15);
         }
 
         // Top Source IPs Chart
         if (summary.topSourceIPs.length > 0) {
+          if (doc.y > 600) {
+            doc.addPage();
+          }
+          
           doc.fontSize(12).text('Top Source IPs Chart');
           doc.moveDown();
           
           const chartX = 50;
           const chartY = doc.y;
           const chartWidth = 500;
-          const chartHeight = 150;
+          const chartHeight = 120;
           const barWidth = chartWidth / summary.topSourceIPs.length - 10;
           const maxCount = Math.max(...summary.topSourceIPs.map((ip: any) => ip.count));
           
           doc.rect(chartX, chartY, chartWidth, chartHeight).stroke();
           
           summary.topSourceIPs.forEach(({ ip, count }: any, index) => {
-            const barHeight = (count / maxCount) * (chartHeight - 20);
+            const barHeight = (count / maxCount) * (chartHeight - 30);
             const x = chartX + 10 + index * (barWidth + 10);
-            const y = chartY + chartHeight - barHeight - 10;
+            const y = chartY + chartHeight - barHeight - 15;
             
             doc.rect(x, y, barWidth, barHeight).fill('#4169E1');
             
-            doc.fontSize(7).fillColor('black').text(ip.substring(0, 15), x, chartY + chartHeight + 5);
+            doc.fontSize(6).fillColor('black').text(ip.substring(0, 12), x, chartY + chartHeight + 5);
             doc.text(count.toString(), x + barWidth/2 - 5, y - 10);
           });
           
-          doc.moveDown(20);
+          doc.moveDown(15);
         }
 
         // Security Alerts
