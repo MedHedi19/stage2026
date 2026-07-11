@@ -184,84 +184,19 @@ export class ReportsService {
         doc.text(`Noise Filtered: ${summary.noiseFiltered}`);
         doc.moveDown();
 
+        // Severity Distribution
+        doc.fontSize(12).text('Severity Distribution');
+        Object.entries(summary.severityDistribution).forEach(([level, count]) => {
+          doc.fontSize(10).text(`Level ${level}: ${count} events`);
+        });
+        doc.moveDown();
 
-        // Severity Distribution Chart
-        if (Object.keys(summary.severityDistribution).length > 0) {
-          if (doc.y > 550) {
-            doc.addPage();
-          }
-          
-          doc.fontSize(14).text('Severity Distribution');
-          doc.moveDown();
-          
-          const chartX = 50;
-          const chartY = doc.y;
-          const chartWidth = 500;
-          const chartHeight = 100;
-          const severityKeys = Object.keys(summary.severityDistribution);
-          const barWidth = chartWidth / severityKeys.length - 15;
-          const severityValues = Object.values(summary.severityDistribution) as number[];
-          const maxCount = Math.max(...severityValues);
-          
-          doc.rect(chartX, chartY, chartWidth, chartHeight).stroke();
-          
-          Object.entries(summary.severityDistribution).forEach(([level, count], index) => {
-            const countNum = count as number;
-            const barHeight = (countNum / maxCount) * (chartHeight - 25);
-            const x = chartX + 15 + index * (barWidth + 15);
-            const y = chartY + chartHeight - barHeight - 15;
-            
-            // Color based on severity
-            const colors: Record<string, string> = {
-              '3': '#FFA500', // orange
-              '4': '#FF6347', // tomato
-              '5': '#FF4500', // orange red
-              '6': '#DC143C', // crimson
-              '7': '#B22222', // fire brick
-              '8': '#8B0000', // dark red
-              '9': '#800000', // maroon
-              '10': '#000000', // black
-            };
-            doc.rect(x, y, barWidth, barHeight).fill(colors[level] || '#4169E1');
-            
-            doc.fontSize(8).fillColor('black').text(`L${level}`, x, chartY + chartHeight + 8);
-            doc.text(countNum.toString(), x + barWidth/2 - 5, y - 12);
-          });
-          
-          doc.moveDown(12);
-        }
-
-        // Top Source IPs Chart
-        if (summary.topSourceIPs.length > 0) {
-          if (doc.y > 550) {
-            doc.addPage();
-          }
-          
-          doc.fontSize(14).text('Top Source IPs');
-          doc.moveDown();
-          
-          const chartX = 50;
-          const chartY = doc.y;
-          const chartWidth = 500;
-          const chartHeight = 100;
-          const barWidth = chartWidth / summary.topSourceIPs.length - 15;
-          const maxCount = Math.max(...summary.topSourceIPs.map((ip: any) => ip.count));
-          
-          doc.rect(chartX, chartY, chartWidth, chartHeight).stroke();
-          
-          summary.topSourceIPs.forEach(({ ip, count }: any, index) => {
-            const barHeight = (count / maxCount) * (chartHeight - 25);
-            const x = chartX + 15 + index * (barWidth + 15);
-            const y = chartY + chartHeight - barHeight - 15;
-            
-            doc.rect(x, y, barWidth, barHeight).fill('#4169E1');
-            
-            doc.fontSize(7).fillColor('black').text(ip.substring(0, 10), x, chartY + chartHeight + 8);
-            doc.text(count.toString(), x + barWidth/2 - 5, y - 12);
-          });
-          
-          doc.moveDown(12);
-        }
+        // Top Source IPs
+        doc.fontSize(12).text('Top Source IPs');
+        summary.topSourceIPs.forEach(({ ip, count }: any) => {
+          doc.fontSize(10).text(`${ip}: ${count} events`);
+        });
+        doc.moveDown();
 
         // Security Alerts
         doc.fontSize(14).text('Security Alert Details');
@@ -319,15 +254,6 @@ export class ReportsService {
     summary.topSourceIPs.forEach(({ ip, count }: any) => {
       summarySheet.addRow([ip, count]);
     });
-
-    // Add simple chart to summary sheet
-    if (Object.keys(summary.severityDistribution).length > 0) {
-      summarySheet.addRow([]);
-      summarySheet.addRow(['Severity Distribution']);
-      Object.entries(summary.severityDistribution).forEach(([level, count]) => {
-        summarySheet.addRow([`Level ${level}`, count]);
-      });
-    }
 
     // Alerts Sheet
     const alertsSheet = workbook.addWorksheet('Security Alerts');
