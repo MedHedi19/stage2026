@@ -69,28 +69,30 @@ export class ReportsService {
 
     // Filter out noise and keep security-relevant alerts
     const securityAlerts = alerts.filter(alert => {
-      const description = alert.rule.description.toLowerCase();
+      const description = (alert.rule.description || '').toLowerCase();
       const groups = alert.rule.groups || [];
-      
-      // Keep if high severity (>= 5)
-      if (alert.rule.level >= 5) return true;
-      
-      // Keep if security-related groups
+
+      // Security groups: always kept regardless of level
       const securityGroups = ['ids', 'suricata', 'authentication_failed', 'attack', 'malware', 'vulnerability'];
       if (groups.some(g => securityGroups.includes(g.toLowerCase()))) return true;
-      
-      // Filter out noise patterns
+
+      // Noise: excluded regardless of level (dpkg, apparmor DENIED normal, etc.)
       const isNoise = noisePatterns.some(pattern => 
         new RegExp(pattern, 'i').test(description)
       );
-      return !isNoise;
+      if (isNoise) return false;
+
+      // Otherwise, keep only if significant severity
+      return alert.rule.level >= 5;
     });
 
-    // Sort by severity (highest first) then by time (newest first)
+    // Sort: prioritize security groups first, then by severity, then by time
+    const priorityGroups = ['ids', 'suricata', 'attack', 'authentication_failed'];
     securityAlerts.sort((a, b) => {
-      if (b.rule.level !== a.rule.level) {
-        return b.rule.level - a.rule.level;
-      }
+      const aPriority = a.rule.groups?.some(g => priorityGroups.includes(g.toLowerCase())) ? 1 : 0;
+      const bPriority = b.rule.groups?.some(g => priorityGroups.includes(g.toLowerCase())) ? 1 : 0;
+      if (aPriority !== bPriority) return bPriority - aPriority;
+      if (b.rule.level !== a.rule.level) return b.rule.level - a.rule.level;
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
 
@@ -114,7 +116,8 @@ export class ReportsService {
 
     const topSourceIPs: Record<string, number> = {};
     securityAlerts.forEach(alert => {
-      const ip = alert.data.src_ip || 'unknown';
+      const ip = alert.data?.src_ip;
+      if (!ip) return; // local system event, no network source
       topSourceIPs[ip] = (topSourceIPs[ip] || 0) + 1;
     });
 
@@ -145,7 +148,12 @@ export class ReportsService {
         };
       } else {
         groups[key].count++;
-        groups[key].lastSeen = alert.timestamp;
+        if (new Date(alert.timestamp) < new Date(groups[key].firstSeen)) {
+          groups[key].firstSeen = alert.timestamp;
+        }
+        if (new Date(alert.timestamp) > new Date(groups[key].lastSeen)) {
+          groups[key].lastSeen = alert.timestamp;
+        }
       }
     });
 
