@@ -5,6 +5,7 @@ import { Report } from './entities/report.entity';
 import { WazuhService } from '../wazuh/wazuh.service';
 import PDFDocument from 'pdfkit';
 import { Workbook } from 'exceljs';
+import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 
 @Injectable()
 export class ReportsService {
@@ -202,7 +203,7 @@ export class ReportsService {
 
 
   private async generatePdfBuffer(processedData: any, filters: any): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
         const doc = new PDFDocument({ margin: 40, size: 'A4' });
         const chunks: Buffer[] = [];
@@ -229,24 +230,59 @@ export class ReportsService {
         
         doc.fontSize(12).text('Répartition par type d\'attaque:');
         doc.moveDown(0.5);
-        Object.entries(summary.attacksByType).forEach(([category, count]) => {
-          const percentage = Math.round(((count as number) / Math.max(1, summary.totalSecurityEvents)) * 100);
-          const barLength = Math.round(percentage / 2); // max 50 chars
-          const bar = '█'.repeat(barLength) + '░'.repeat(50 - barLength);
-          doc.fontSize(10).font('Courier').text(`${category.padEnd(25)} ${bar} ${count} (${percentage}%)`);
-        });
+        
+        const typeChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const typeChartBuffer = await typeChartCanvas.renderToBuffer({
+            type: 'bar',
+            data: {
+                labels: Object.keys(summary.attacksByType),
+                datasets: [{
+                    label: 'Attaques',
+                    data: Object.values(summary.attacksByType),
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    title: { display: false },
+                    legend: { display: false }
+                }
+            }
+        } as any);
+
+        doc.image(typeChartBuffer, { width: 450 });
         doc.moveDown();
 
         doc.font('Helvetica').fontSize(12).text('Évolution dans le temps:');
         doc.moveDown(0.5);
-        summary.alertsOverTime.forEach(({ time, count }: any) => {
-          // find max to scale the bar
-          const maxCount = Math.max(...summary.alertsOverTime.map((a: any) => a.count), 1);
-          const barLength = Math.round((count / maxCount) * 50);
-          const bar = '█'.repeat(barLength);
-          const displayTime = new Date(time).toLocaleString();
-          doc.fontSize(10).font('Courier').text(`${displayTime.padEnd(22)} | ${bar} ${count}`);
-        });
+        
+        const timeChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const timeChartBuffer = await timeChartCanvas.renderToBuffer({
+            type: 'line',
+            data: {
+                labels: summary.alertsOverTime.map((a: any) => new Date(a.time).toLocaleString()),
+                datasets: [{
+                    label: 'Nombre d\'alertes',
+                    data: summary.alertsOverTime.map((a: any) => a.count),
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1,
+                    fill: true
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        } as any);
+
+        doc.image(timeChartBuffer, { width: 450 });
         doc.font('Helvetica').moveDown();
 
         // 2. Statistiques
@@ -338,6 +374,63 @@ export class ReportsService {
 
     dashSheet.getColumn(1).width = 30;
     dashSheet.getColumn(2).width = 20;
+
+    // Add charts
+    const typeChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 300, backgroundColour: 'white' });
+    const typeChartBuffer = await typeChartCanvas.renderToBuffer({
+        type: 'bar',
+        data: {
+            labels: Object.keys(summary.attacksByType),
+            datasets: [{
+                label: 'Attaques',
+                data: Object.values(summary.attacksByType),
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: { plugins: { legend: { display: false } } }
+    } as any);
+
+    const typeImageId = workbook.addImage({
+        buffer: typeChartBuffer,
+        extension: 'png',
+    });
+    
+    dashSheet.addImage(typeImageId, {
+        tl: { col: 3, row: 4 },
+        ext: { width: 500, height: 300 }
+    });
+
+    const timeChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 300, backgroundColour: 'white' });
+    const timeChartBuffer = await timeChartCanvas.renderToBuffer({
+        type: 'line',
+        data: {
+            labels: summary.alertsOverTime.map((a: any) => new Date(a.time).toLocaleString()),
+            datasets: [{
+                label: 'Nombre d\'alertes',
+                data: summary.alertsOverTime.map((a: any) => a.count),
+                backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                borderColor: 'rgba(255, 99, 132, 1)',
+                borderWidth: 1,
+                fill: true
+            }]
+        },
+        options: {
+            scales: { y: { beginAtZero: true } },
+            plugins: { legend: { display: false } }
+        }
+    } as any);
+
+    const timeImageId = workbook.addImage({
+        buffer: timeChartBuffer,
+        extension: 'png',
+    });
+    
+    dashSheet.addImage(timeImageId, {
+        tl: { col: 3, row: 20 },
+        ext: { width: 500, height: 300 }
+    });
 
     // 2. Statistiques
     const statSheet = workbook.addWorksheet('Statistiques');
