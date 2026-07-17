@@ -393,7 +393,7 @@ export class ReportsService {
     } as any);
 
     const typeImageId = workbook.addImage({
-        buffer: typeChartBuffer,
+        buffer: typeChartBuffer as any,
         extension: 'png',
     });
     
@@ -423,7 +423,7 @@ export class ReportsService {
     } as any);
 
     const timeImageId = workbook.addImage({
-        buffer: timeChartBuffer,
+        buffer: timeChartBuffer as any,
         extension: 'png',
     });
     
