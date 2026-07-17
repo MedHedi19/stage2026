@@ -55,24 +55,7 @@ export class AuthService {
     };
   }
 
-  async signup(username: string, password: string) {
-    const existingUser = await this.usersService.findByUsername(username);
-    if (existingUser) {
-      throw new BadRequestException('Username already exists');
-    }
 
-    const user = await this.usersService.create(username, password, UserRole.VIEWER);
-    
-    return {
-      message: 'User created successfully',
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        mfaEnabled: user.mfaEnabled,
-      },
-    };
-  }
 
   generateAccessToken(user: any): string {
     const payload = {

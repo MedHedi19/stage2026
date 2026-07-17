@@ -57,6 +57,19 @@ export class ReportsService {
     return { buffer, filename };
   }
 
+  async getHistory(): Promise<any[]> {
+    const reports = await this.reportRepository.find({
+      order: { createdAt: 'DESC' },
+    });
+    return reports.map((r) => ({
+      id: r.id,
+      createdBy: r.username ?? '—',
+      format: r.format,
+      filename: `security-report-${r.createdAt.toISOString().replace(/[:.]/g, '-')}.${r.format === 'excel' ? 'xlsx' : r.format}`,
+      createdAt: r.createdAt,
+    }));
+  }
+
   private processAlertsForSOC(alerts: any[]) {
     // Noise patterns to filter out
     const noisePatterns = [
@@ -96,22 +109,42 @@ export class ReportsService {
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
 
-    // Group repetitive events
-    const groupedAlerts = this.groupAlerts(securityAlerts);
+    // Group repetitive events into incidents
+    const incidents = this.groupAlerts(securityAlerts);
 
     return {
-      summary: this.generateSummary(alerts, securityAlerts, groupedAlerts),
-      alerts: groupedAlerts,
+      summary: this.generateSummary(alerts, securityAlerts),
+      incidents: incidents,
+      rawAlerts: securityAlerts,
       totalRaw: alerts.length,
       totalSecurity: securityAlerts.length,
     };
   }
 
-  private generateSummary(rawAlerts: any[], securityAlerts: any[], groupedAlerts: any[]) {
+  private generateSummary(rawAlerts: any[], securityAlerts: any[]) {
     const severityCounts: Record<string, number> = {};
+    const attacksByType: Record<string, number> = {};
+    const alertOverTime: Record<string, number> = {};
+
     securityAlerts.forEach(alert => {
       const level = alert.rule.level;
       severityCounts[level] = (severityCounts[level] || 0) + 1;
+
+      // Grouping by type
+      const desc = alert.rule.description || '';
+      let category = 'Autre (Sécurité)';
+      if (desc.includes('SQL Injection')) category = 'SQL Injection';
+      else if (desc.includes('SSH')) category = 'SSH Brute Force';
+      else if (desc.includes('Shellshock')) category = 'Exploit (Shellshock)';
+      else if (desc.includes('sudoers')) category = 'Privilege Escalation';
+      else if (desc.includes('port scan') || desc.includes('Nmap')) category = 'Port Scanning';
+      else if (desc.includes('File Integrity') || desc.includes('fim')) category = 'FIM Change';
+
+      attacksByType[category] = (attacksByType[category] || 0) + 1;
+
+      // Over time (grouped by hour)
+      const dateStr = alert.timestamp ? alert.timestamp.substring(0, 13) + ':00:00Z' : 'Unknown';
+      alertOverTime[dateStr] = (alertOverTime[dateStr] || 0) + 1;
     });
 
     const topSourceIPs: Record<string, number> = {};
@@ -121,12 +154,18 @@ export class ReportsService {
       topSourceIPs[ip] = (topSourceIPs[ip] || 0) + 1;
     });
 
+    const overTimeList = Object.entries(alertOverTime)
+      .map(([time, count]) => ({ time, count }))
+      .sort((a, b) => a.time.localeCompare(b.time));
+
     return {
-      period: `${new Date(rawAlerts[rawAlerts.length - 1]?.timestamp).toLocaleDateString()} - ${new Date(rawAlerts[0]?.timestamp).toLocaleDateString()}`,
+      period: rawAlerts.length > 0 ? `${new Date(rawAlerts[rawAlerts.length - 1]?.timestamp).toLocaleDateString()} - ${new Date(rawAlerts[0]?.timestamp).toLocaleDateString()}` : 'N/A',
       totalRawEvents: rawAlerts.length,
       totalSecurityEvents: securityAlerts.length,
       noiseFiltered: rawAlerts.length - securityAlerts.length,
       severityDistribution: severityCounts,
+      attacksByType,
+      alertsOverTime: overTimeList,
       topSourceIPs: Object.entries(topSourceIPs)
         .sort((a, b) => (b[1] as number) - (a[1] as number))
         .slice(0, 5)
@@ -138,7 +177,7 @@ export class ReportsService {
     const groups = {};
     
     alerts.forEach(alert => {
-      const key = `${alert.rule.description}_${alert.data.src_ip || 'unknown'}_${alert.data.dest_ip || 'unknown'}`;
+      const key = `${alert.rule.description}_${alert.data?.src_ip || 'unknown'}_${alert.data?.dest_ip || 'unknown'}`;
       if (!groups[key]) {
         groups[key] = {
           ...alert,
@@ -160,74 +199,116 @@ export class ReportsService {
     return Object.values(groups);
   }
 
-  async getHistory(): Promise<Report[]> {
-    return this.reportRepository.find({
-      order: {
-        createdAt: 'DESC',
-      },
-    });
-  }
+
 
   private async generatePdfBuffer(processedData: any, filters: any): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       try {
         const doc = new PDFDocument({ margin: 40, size: 'A4' });
         const chunks: Buffer[] = [];
-        const { summary, alerts } = processedData;
+        const { summary, incidents, rawAlerts } = processedData;
 
         doc.on('data', chunk => chunks.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', err => reject(err));
 
+        const addSectionHeader = (title: string) => {
+          doc.moveDown();
+          doc.fontSize(16).fillColor('#0b192c').text(title, { underline: true });
+          doc.fillColor('black').moveDown(0.5);
+        };
+
         // Document Header
-        doc.fontSize(20).text('IDS/IPS Security Report', { align: 'center' });
-        doc.fontSize(12).text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.fontSize(22).text('Rapport de Sécurité SOC', { align: 'center' });
+        doc.fontSize(12).fillColor('gray').text(`Généré le: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.fillColor('black');
         doc.moveDown();
 
-        // Executive Summary
-        doc.fontSize(14).text('Executive Summary');
-        doc.fontSize(10).text(`Report Period: ${summary.period}`);
-        doc.text(`Total Raw Events: ${summary.totalRawEvents}`);
-        doc.text(`Security Events: ${summary.totalSecurityEvents}`);
-        doc.text(`Noise Filtered: ${summary.noiseFiltered}`);
+        // 1. Tableau de bord
+        addSectionHeader('1. Tableau de bord');
+        
+        doc.fontSize(12).text('Répartition par type d\'attaque:');
+        doc.moveDown(0.5);
+        Object.entries(summary.attacksByType).forEach(([category, count]) => {
+          const percentage = Math.round(((count as number) / Math.max(1, summary.totalSecurityEvents)) * 100);
+          const barLength = Math.round(percentage / 2); // max 50 chars
+          const bar = '█'.repeat(barLength) + '░'.repeat(50 - barLength);
+          doc.fontSize(10).font('Courier').text(`${category.padEnd(25)} ${bar} ${count} (${percentage}%)`);
+        });
         doc.moveDown();
 
-        // Severity Distribution
-        doc.fontSize(12).text('Severity Distribution');
+        doc.font('Helvetica').fontSize(12).text('Évolution dans le temps:');
+        doc.moveDown(0.5);
+        summary.alertsOverTime.forEach(({ time, count }: any) => {
+          // find max to scale the bar
+          const maxCount = Math.max(...summary.alertsOverTime.map((a: any) => a.count), 1);
+          const barLength = Math.round((count / maxCount) * 50);
+          const bar = '█'.repeat(barLength);
+          const displayTime = new Date(time).toLocaleString();
+          doc.fontSize(10).font('Courier').text(`${displayTime.padEnd(22)} | ${bar} ${count}`);
+        });
+        doc.font('Helvetica').moveDown();
+
+        // 2. Statistiques
+        addSectionHeader('2. Statistiques');
+        doc.fontSize(10).text(`Période d'analyse: ${summary.period}`);
+        doc.text(`Total événements bruts: ${summary.totalRawEvents}`);
+        doc.text(`Événements de sécurité (filtrés): ${summary.totalSecurityEvents}`);
+        doc.text(`Bruit écarté: ${summary.noiseFiltered}`);
+        doc.moveDown();
+
+        doc.fontSize(12).text('Distribution par Sévérité:');
         Object.entries(summary.severityDistribution).forEach(([level, count]) => {
-          doc.fontSize(10).text(`Level ${level}: ${count} events`);
+          doc.fontSize(10).text(`- Niveau ${level}: ${count} événements`);
         });
         doc.moveDown();
 
-        // Top Source IPs
-        doc.fontSize(12).text('Top Source IPs');
-        summary.topSourceIPs.forEach(({ ip, count }: any) => {
-          doc.fontSize(10).text(`${ip}: ${count} events`);
-        });
-        doc.moveDown();
-
-        // Security Alerts
-        doc.fontSize(14).text('Security Alert Details');
-        doc.moveDown();
-
-        if (alerts.length === 0) {
-          doc.fontSize(10).text('No security alerts found for the selected filters.');
+        doc.fontSize(12).text('Top 5 IPs Sources:');
+        if (summary.topSourceIPs.length === 0) {
+          doc.fontSize(10).text('- Aucune IP source externe détectée.');
         } else {
-          alerts.forEach((alert: any, index: number) => {
-            if (doc.y > 700) {
-              doc.addPage();
-            }
+          summary.topSourceIPs.forEach(({ ip, count }: any) => {
+            doc.fontSize(10).text(`- ${ip}: ${count} requêtes`);
+          });
+        }
+        doc.moveDown();
 
-            doc.fontSize(11).text(`${index + 1}. [Level ${alert.rule.level}] ${alert.rule.description}`);
-            if (alert.count > 1) {
-              doc.fontSize(9).text(`   Occurrences: ${alert.count} (First: ${alert.firstSeen}, Last: ${alert.lastSeen})`);
-            } else {
-              doc.fontSize(9).text(`   Time: ${alert.timestamp}`);
-            }
-            doc.text(`   Agent: ${alert.agent.name} (${alert.agent.ip || 'N/A'})`);
-            doc.text(`   Source: ${alert.data.src_ip || 'N/A'} -> Dest: ${alert.data.dest_ip || 'N/A'}`);
+        // 3. Incidents
+        doc.addPage();
+        addSectionHeader('3. Incidents (Alertes Groupées)');
+        if (incidents.length === 0) {
+          doc.fontSize(10).text('Aucun incident détecté.');
+        } else {
+          incidents.forEach((incident: any, index: number) => {
+            if (doc.y > 700) doc.addPage();
+            doc.fontSize(11).font('Helvetica-Bold').text(`${index + 1}. [Niv ${incident.rule.level}] ${incident.rule.description}`);
+            doc.font('Helvetica').fontSize(9);
+            doc.text(`   Occurrences: ${incident.count}`);
+            doc.text(`   Première vue: ${new Date(incident.firstSeen).toLocaleString()}`);
+            doc.text(`   Dernière vue: ${new Date(incident.lastSeen).toLocaleString()}`);
+            doc.text(`   Source: ${incident.data?.src_ip || 'N/A'} -> Dest: ${incident.data?.dest_ip || 'N/A'}`);
             doc.moveDown();
           });
+        }
+
+        // 4. Alertes
+        doc.addPage();
+        addSectionHeader('4. Alertes de Sécurité (Détail)');
+        if (rawAlerts.length === 0) {
+          doc.fontSize(10).text('Aucune alerte de sécurité pertinente.');
+        } else {
+          const maxAlertsToPrint = Math.min(rawAlerts.length, 200); // limit to avoid huge PDFs
+          for(let i = 0; i < maxAlertsToPrint; i++) {
+            const alert = rawAlerts[i];
+            if (doc.y > 750) doc.addPage();
+            doc.fontSize(9).font('Helvetica-Bold').text(`[${new Date(alert.timestamp).toLocaleString()}] Niv ${alert.rule.level} - ${alert.rule.description}`);
+            doc.font('Helvetica').fontSize(8);
+            doc.text(`   Agent: ${alert.agent?.name || 'N/A'} | Src: ${alert.data?.src_ip || 'N/A'} | Dst: ${alert.data?.dest_ip || 'N/A'}`);
+            doc.moveDown(0.5);
+          }
+          if (rawAlerts.length > maxAlertsToPrint) {
+             doc.fontSize(10).font('Helvetica-Oblique').text(`... et ${rawAlerts.length - maxAlertsToPrint} autres alertes omises pour la lisibilité.`);
+          }
         }
 
         doc.end();
@@ -239,81 +320,101 @@ export class ReportsService {
 
   private async generateExcelBuffer(processedData: any, filters: any): Promise<Buffer> {
     const workbook = new Workbook();
-    const { summary, alerts } = processedData;
+    const { summary, incidents, rawAlerts } = processedData;
     
-    // Summary Sheet
-    const summarySheet = workbook.addWorksheet('Executive Summary');
-    summarySheet.addRow(['IDS/IPS Security Report']);
-    summarySheet.addRow([`Report Generated: ${new Date().toLocaleString()}`]);
-    summarySheet.addRow([`Report Period: ${summary.period}`]);
-    summarySheet.addRow([]);
-    summarySheet.addRow(['Total Raw Events', summary.totalRawEvents]);
-    summarySheet.addRow(['Security Events', summary.totalSecurityEvents]);
-    summarySheet.addRow(['Noise Filtered', summary.noiseFiltered]);
-    summarySheet.addRow([]);
+    // 1. Tableau de bord
+    const dashSheet = workbook.addWorksheet('Tableau de bord');
+    dashSheet.addRow(['Rapport de Sécurité SOC - Tableau de bord']);
+    dashSheet.addRow([`Généré le: ${new Date().toLocaleString()}`]);
+    dashSheet.addRow([`Période: ${summary.period}`]);
+    dashSheet.addRow([]);
     
-    summarySheet.addRow(['Severity Distribution']);
+    dashSheet.addRow(['Attaques par Type', 'Nombre']);
+    Object.entries(summary.attacksByType).forEach(([cat, count]) => dashSheet.addRow([cat, count]));
+    dashSheet.addRow([]);
+
+    dashSheet.addRow(['Évolution dans le temps', 'Nombre d\'alertes']);
+    summary.alertsOverTime.forEach(({ time, count }: any) => dashSheet.addRow([new Date(time).toLocaleString(), count]));
+
+    dashSheet.getColumn(1).width = 30;
+    dashSheet.getColumn(2).width = 20;
+
+    // 2. Statistiques
+    const statSheet = workbook.addWorksheet('Statistiques');
+    statSheet.addRow(['Métrique', 'Valeur']);
+    statSheet.addRow(['Total Événements Bruts', summary.totalRawEvents]);
+    statSheet.addRow(['Événements de Sécurité', summary.totalSecurityEvents]);
+    statSheet.addRow(['Bruit Écarté', summary.noiseFiltered]);
+    statSheet.addRow([]);
+
+    statSheet.addRow(['Sévérité', 'Nombre']);
     Object.entries(summary.severityDistribution).forEach(([level, count]) => {
-      summarySheet.addRow([`Level ${level}`, count]);
+      statSheet.addRow([`Niveau ${level}`, count]);
     });
-    
-    summarySheet.addRow([]);
-    summarySheet.addRow(['Top Source IPs']);
+    statSheet.addRow([]);
+
+    statSheet.addRow(['Top IP Sources', 'Nombre de requêtes']);
     summary.topSourceIPs.forEach(({ ip, count }: any) => {
-      summarySheet.addRow([ip, count]);
+      statSheet.addRow([ip, count]);
     });
 
-    // Alerts Sheet
-    const alertsSheet = workbook.addWorksheet('Security Alerts');
-    alertsSheet.addRow(['IDS/IPS Cybersecurity Alert Report']);
-    alertsSheet.addRow([`Report Generated On: ${new Date().toLocaleString()}`]);
-    alertsSheet.addRow([`Filters: ${JSON.stringify(filters)}`]);
-    alertsSheet.addRow([]);
+    statSheet.getColumn(1).width = 30;
+    statSheet.getColumn(2).width = 20;
 
-    alertsSheet.getRow(1).font = { size: 16, bold: true };
-    alertsSheet.getRow(2).font = { italic: true };
-
-    // Columns
-    alertsSheet.columns = [
-      { header: 'Alert ID', key: 'id', width: 25 },
-      { header: 'Timestamp', key: 'timestamp', width: 25 },
-      { header: 'Severity Level', key: 'level', width: 15 },
-      { header: 'Rule ID', key: 'ruleId', width: 12 },
-      { header: 'Description', key: 'description', width: 45 },
-      { header: 'Agent ID', key: 'agentId', width: 12 },
-      { header: 'Agent Name', key: 'agentName', width: 20 },
-      { header: 'Source IP', key: 'srcIp', width: 20 },
-      { header: 'Destination IP', key: 'destIp', width: 20 },
-      { header: 'Protocol', key: 'protocol', width: 12 },
-      { header: 'Occurrences', key: 'count', width: 12 },
+    // 3. Incidents
+    const incSheet = workbook.addWorksheet('Incidents');
+    incSheet.addRow(['Description', 'Sévérité', 'Occurrences', 'Première Vue', 'Dernière Vue', 'Source IP', 'Dest IP']);
+    incSheet.getRow(1).font = { bold: true };
+    incSheet.columns = [
+      { key: 'desc', width: 50 },
+      { key: 'sev', width: 10 },
+      { key: 'occ', width: 15 },
+      { key: 'first', width: 25 },
+      { key: 'last', width: 25 },
+      { key: 'src', width: 20 },
+      { key: 'dst', width: 20 }
     ];
 
-    alerts.forEach((alert: any) => {
-      alertsSheet.addRow({
-        id: alert.id,
-        timestamp: alert.count > 1 ? `${alert.firstSeen} - ${alert.lastSeen}` : alert.timestamp,
-        level: alert.rule.level,
-        ruleId: alert.rule.id,
-        description: alert.rule.description,
-        agentId: alert.agent.id,
-        agentName: alert.agent.name,
-        srcIp: alert.data.src_ip || 'N/A',
-        destIp: alert.data.dest_ip || 'N/A',
-        protocol: alert.data.protocol || 'N/A',
-        count: alert.count || 1,
-      });
+    incidents.forEach((inc: any) => {
+      incSheet.addRow([
+        inc.rule.description,
+        inc.rule.level,
+        inc.count,
+        new Date(inc.firstSeen).toLocaleString(),
+        new Date(inc.lastSeen).toLocaleString(),
+        inc.data?.src_ip || 'N/A',
+        inc.data?.dest_ip || 'N/A'
+      ]);
     });
 
-    // Style column header row (which is row 5, since we added 4 rows at top)
-    const headerRowIdx = 5;
-    const headerRow = alertsSheet.getRow(headerRowIdx);
-    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    headerRow.eachCell(cell => {
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF0B192C' },
-      };
+    // 4. Alertes
+    const alertsSheet = workbook.addWorksheet('Alertes');
+    alertsSheet.addRow(['Timestamp', 'Sévérité', 'Règle ID', 'Description', 'Agent', 'Source IP', 'Dest IP', 'Protocole']);
+    alertsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    alertsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B192C' } };
+    
+    alertsSheet.columns = [
+      { key: 'time', width: 25 },
+      { key: 'sev', width: 10 },
+      { key: 'ruleId', width: 12 },
+      { key: 'desc', width: 50 },
+      { key: 'agent', width: 20 },
+      { key: 'src', width: 20 },
+      { key: 'dst', width: 20 },
+      { key: 'proto', width: 15 }
+    ];
+
+    rawAlerts.forEach((alert: any) => {
+      alertsSheet.addRow([
+        new Date(alert.timestamp).toLocaleString(),
+        alert.rule.level,
+        alert.rule.id,
+        alert.rule.description,
+        alert.agent?.name || 'N/A',
+        alert.data?.src_ip || 'N/A',
+        alert.data?.dest_ip || 'N/A',
+        alert.data?.protocol || 'N/A'
+      ]);
     });
 
     const buffer = await workbook.xlsx.writeBuffer();

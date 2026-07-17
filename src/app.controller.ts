@@ -24,14 +24,7 @@ export class AppController {
               body: { username: 'string', password: 'string' },
               response: { accessToken: 'string', requiresMfa: 'boolean', tempToken: 'string (if MFA required)' }
             },
-            {
-              method: 'POST',
-              path: '/auth/signup',
-              description: 'Create new user account',
-              auth: false,
-              body: { username: 'string', password: 'string' },
-              response: { id: 'number', username: 'string', role: 'string' }
-            },
+
             {
               method: 'POST',
               path: '/auth/mfa/setup',

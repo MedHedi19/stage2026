@@ -18,6 +18,7 @@ export interface WazuhAlert {
     name: string;
     ip?: string;
   };
+  event_type?: string;
   data: {
     src_ip?: string;
     dest_ip?: string;
@@ -188,6 +189,7 @@ export class WazuhService {
           timestamp: hit._source.timestamp,
           rule: hit._source.rule,
           agent: hit._source.agent,
+          event_type: hit._source.event_type,
           data: hit._source.data || {},
         }));
       }

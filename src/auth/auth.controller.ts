@@ -18,12 +18,7 @@ export class AuthController {
     return this.authService.login(loginDto.username, loginDto.password);
   }
 
-  @Post('signup')
-  @Throttle({ default: { limit: 3, ttl: 3600000 } })
-  @AuditAction('Signup')
-  async signup(@Body() body: any) {
-    return this.authService.signup(body.username, body.password);
-  }
+
 
   @Post('mfa/setup')
   @UseGuards(JwtAuthGuard)
