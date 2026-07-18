@@ -14,11 +14,13 @@ import { AuditModule } from './audit/audit.module';
 import { WazuhModule } from './wazuh/wazuh.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ReportsModule } from './reports/reports.module';
+import { AssistantModule } from './assistant/assistant.module';
 
 // Entities
 import { User } from './users/entities/user.entity';
 import { AuditLog } from './audit/entities/audit-log.entity';
 import { Report } from './reports/entities/report.entity';
+import { ConversationLog } from './assistant/entities/conversation-log.entity';
 
 @Module({
   imports: [
@@ -49,7 +51,7 @@ import { Report } from './reports/entities/report.entity';
         username: configService.get<string>('DB_USERNAME') || 'ids_app',
         password: configService.get<string>('DB_PASSWORD') || '',
         database: configService.get<string>('DB_DATABASE') || 'ids_ips_db',
-        entities: [User, AuditLog, Report],
+        entities: [User, AuditLog, Report, ConversationLog],
         // synchronize: true should ONLY be used in development.
         // It automatically aligns the MySQL schema with TypeORM definitions on startup.
         synchronize: true,
@@ -61,6 +63,7 @@ import { Report } from './reports/entities/report.entity';
     WazuhModule,
     RealtimeModule,
     ReportsModule,
+    AssistantModule,
   ],
   controllers: [AppController],
   providers: [AppService],
