@@ -17,7 +17,7 @@ export class AssistantController {
   // Limit to 20 requests per hour (3600000ms) for chat
   @Throttle({ default: { limit: 20, ttl: 3600000 } })
   async chat(@Request() req, @Body() chatRequestDto: ChatRequestDto) {
-    return this.assistantService.chat(req.user.userId, chatRequestDto);
+    return this.assistantService.chat(req.user.id, chatRequestDto);
   }
 
   @Get('history/:conversationId')
@@ -30,6 +30,6 @@ export class AssistantController {
   @Roles(UserRole.ANALYST, UserRole.ADMIN)
   @Throttle({ default: { limit: 20, ttl: 3600000 } })
   async getQuickAnalysis(@Request() req, @Param('alertId') alertId: string) {
-    return this.assistantService.getQuickAnalysis(req.user.userId, alertId);
+    return this.assistantService.getQuickAnalysis(req.user.id, alertId);
   }
 }
