@@ -50,7 +50,7 @@ Contexte technique de la plateforme :
       // Pour une vraie implémentation, on pourrait filtrer par ID. 
       // Ici, on récupère les récentes et on cherche celle qui correspond, ou on utilise le système de requêtes wazuh.
       const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 1000 });
-      const alert = alerts.find(a => a.rule?.id === alertId || a.id === alertId || a._id === alertId);
+      const alert = alerts.find(a => a.rule?.id === alertId || a.id === alertId);
       
       if (!alert) {
         return `Aucun détail supplémentaire trouvé pour l'alerte ID ${alertId}.`;
