@@ -25,7 +25,16 @@ export class AssistantService {
     this.modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   }
 
-  private getSystemPrompt(): string {
+  private getSystemPrompt(isSummaryRequest: boolean = false): string {
+    if (isSummaryRequest) {
+      return `
+Tu es un assistant SOC expert. RÈGLES :
+- Fournis une analyse claire, professionnelle et synthétique du résumé des alertes du jour en 3 à 5 lignes.
+- Ne commence pas par des formules de politesse ("Bonjour", etc.).
+- Explique la sévérité des alertes et les actions potentielles à entreprendre de manière concise.
+- Contexte : Suricata (alert= détecte, drop= bloque), Wazuh. Ne jamais inventer de données.
+`;
+    }
     return `
 Tu es un assistant SOC expert. RÈGLES STRICTES :
 - Réponds en 1 à 3 lignes MAXIMUM. Pas d'exceptions.
@@ -86,8 +95,8 @@ Agent : ${alert.agent?.name || 'N/A'}
     
     let alertId = dto.alertId;
     if (!alertId && dto.message) {
-      // Find alert IDs: typically 15-30 character alphanumeric strings (like 2-i1hp8B0iudVhLN9xdA or lgKahp8B979vven6RxJ7)
-      const match = dto.message.match(/\b([a-zA-Z0-9_-]{15,30})\b/);
+      // Find alert IDs: typically 15-30 character alphanumeric strings (can contain dashes and underscores)
+      const match = dto.message.match(/(?:^|\s)([a-zA-Z0-9_-]{15,30})(?=$|\s|[.,;:?!])/);
       if (match) {
         alertId = match[1];
       } else {
@@ -100,7 +109,10 @@ Agent : ${alert.agent?.name || 'N/A'}
       }
     }
 
-    let prompt = this.getSystemPrompt() + '\n\n';
+    const isSummaryRequest = dto.message.toLowerCase().includes('résumé du jour') || 
+                             dto.message.toLowerCase().includes('daily summary') || 
+                             dto.message.toLowerCase().includes('sévérité');
+    let prompt = this.getSystemPrompt(isSummaryRequest) + '\n\n';
     
     if (alertId) {
       const context = await this.fetchAlertContext(alertId);
