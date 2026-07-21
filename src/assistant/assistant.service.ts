@@ -121,7 +121,7 @@ Agent : ${alert.agent?.name || 'N/A'}
 
   async getQuickAnalysis(userId: number, alertId: string) {
     const context = await this.fetchAlertContext(alertId);
-    
+
     const prompt = `
 ${context}
 
@@ -137,7 +137,7 @@ Réponds STRICTEMENT dans ce format JSON, sans texte avant ou après :
       const model = this.genAI.getGenerativeModel({ model: this.modelName });
       const result = await model.generateContent(prompt);
       let text = result.response.text().trim();
-      
+
       if (text.startsWith('\`\`\`json')) {
          text = text.substring(7, text.length - 3).trim();
       } else if (text.startsWith('\`\`\`')) {
@@ -153,6 +153,26 @@ Réponds STRICTEMENT dans ce format JSON, sans texte avant ou après :
          investigationSteps: [],
          remediationSteps: []
       };
+    }
+  }
+
+  async getLatestAlert() {
+    try {
+      const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 1 });
+      return alerts[0] || null;
+    } catch (error) {
+      console.error('Error fetching latest alert:', error);
+      return null;
+    }
+  }
+
+  async getDailySummary() {
+    try {
+      const stats = await this.wazuhService.getAlertStats({});
+      return stats;
+    } catch (error) {
+      console.error('Error fetching daily summary:', error);
+      return { totalAlerts: 0, severityDistribution: {}, attacksByType: {}, topSourceIps: [], alertsOverTime: [] };
     }
   }
 }

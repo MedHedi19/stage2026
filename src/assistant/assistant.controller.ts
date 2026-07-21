@@ -32,4 +32,16 @@ export class AssistantController {
   async getQuickAnalysis(@Request() req, @Param('alertId') alertId: string) {
     return this.assistantService.getQuickAnalysis(req.user.id, alertId);
   }
+
+  @Get('latest-alert')
+  @Roles(UserRole.ANALYST, UserRole.ADMIN)
+  async getLatestAlert() {
+    return this.assistantService.getLatestAlert();
+  }
+
+  @Get('daily-summary')
+  @Roles(UserRole.ANALYST, UserRole.ADMIN)
+  async getDailySummary() {
+    return this.assistantService.getDailySummary();
+  }
 }
