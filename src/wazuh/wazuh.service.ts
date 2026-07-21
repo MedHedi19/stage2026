@@ -151,7 +151,7 @@ export class WazuhService {
           });
         } else {
           payload.query.bool.must.push({
-            ids: { values: [filters.id] }
+            term: { _id: filters.id }
           });
         }
       }

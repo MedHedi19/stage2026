@@ -86,9 +86,8 @@ Agent : ${alert.agent?.name || 'N/A'}
     
     let alertId = dto.alertId;
     if (!alertId && dto.message) {
-      // Find alert IDs: 20-character IDs (like 2-i1hp8B0iudVhLN9xdA) or rule IDs (e.g. 5710)
-      const match = dto.message.match(/\b([a-zA-Z0-9]{1,2}-[a-zA-Z0-9_-]{15,25})\b/) ||
-                    dto.message.match(/\b([a-zA-Z0-9_-]{20})\b/);
+      // Find alert IDs: typically 15-30 character alphanumeric strings (like 2-i1hp8B0iudVhLN9xdA or lgKahp8B979vven6RxJ7)
+      const match = dto.message.match(/\b([a-zA-Z0-9_-]{15,30})\b/);
       if (match) {
         alertId = match[1];
       } else {
