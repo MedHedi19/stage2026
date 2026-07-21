@@ -22,7 +22,7 @@ export class AssistantService {
       console.warn('GEMINI_API_KEY is not defined in environment variables.');
     }
     this.genAI = new GoogleGenerativeAI(apiKey || 'missing-key');
-    this.modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    this.modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
   }
 
   private getSystemPrompt(isSummaryRequest: boolean = false): string {
