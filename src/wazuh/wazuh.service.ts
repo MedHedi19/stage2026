@@ -120,6 +120,7 @@ export class WazuhService {
     startDate?: string;
     endDate?: string;
     limit?: number;
+    id?: string;
   }): Promise<WazuhAlert[]> {
     try {
       const { url, user, password } = this.getApiConfig();
@@ -142,6 +143,18 @@ export class WazuhService {
         sort: [{ timestamp: { order: 'desc' } }],
         size: filters.limit || 50,
       };
+
+      if (filters.id) {
+        if (/^\d+$/.test(filters.id)) {
+          payload.query.bool.must.push({
+            term: { 'rule.id': filters.id }
+          });
+        } else {
+          payload.query.bool.must.push({
+            ids: { values: [filters.id] }
+          });
+        }
+      }
 
       if (filters.severity !== undefined) {
         payload.query.bool.must.push({

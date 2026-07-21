@@ -40,10 +40,23 @@ Contexte : Suricata (alert= détecte, drop= bloque), Wazuh. Ne jamais inventer d
 
   private async fetchAlertContext(alertId: string): Promise<string> {
     try {
-      // Pour une vraie implémentation, on pourrait filtrer par ID. 
-      // Ici, on récupère les récentes et on cherche celle qui correspond, ou on utilise le système de requêtes wazuh.
-      const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 1000 });
-      const alert = alerts.find(a => a.rule?.id === alertId || a.id === alertId);
+      let alert: any = null;
+
+      try {
+        // Query indexer by ID directly first (rule.id or document _id)
+        const directAlerts = await this.wazuhService.fetchRecentAlerts({ id: alertId, limit: 1 });
+        if (directAlerts && directAlerts.length > 0) {
+          alert = directAlerts[0];
+        }
+      } catch (directError) {
+        console.warn(`[Assistant] Direct alert query failed for ID ${alertId}:`, directError.message);
+      }
+
+      if (!alert) {
+        // Fallback: search in the recent 1000 alerts
+        const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 1000 });
+        alert = alerts.find(a => a.rule?.id === alertId || a.id === alertId);
+      }
       
       if (!alert) {
         return `Aucun détail supplémentaire trouvé pour l'alerte ID ${alertId}.`;
@@ -71,10 +84,27 @@ Agent : ${alert.agent?.name || 'N/A'}
   async chat(userId: number, dto: ChatRequestDto) {
     const conversationId = dto.conversationId || randomUUID();
     
+    let alertId = dto.alertId;
+    if (!alertId && dto.message) {
+      // Find alert IDs: 20-character IDs (like 2-i1hp8B0iudVhLN9xdA) or rule IDs (e.g. 5710)
+      const match = dto.message.match(/\b([a-zA-Z0-9]{1,2}-[a-zA-Z0-9_-]{15,25})\b/) ||
+                    dto.message.match(/\b([a-zA-Z0-9_-]{20})\b/);
+      if (match) {
+        alertId = match[1];
+      } else {
+        // Look for 4 to 6 digit rule ID
+        const ruleMatch = dto.message.match(/\b(?:rule|alert|alerte|id|règle)\s*[:#]?\s*(\d{4,6})\b/i) ||
+                          dto.message.match(/\b(\d{4,6})\b/);
+        if (ruleMatch) {
+          alertId = ruleMatch[1];
+        }
+      }
+    }
+
     let prompt = this.getSystemPrompt() + '\n\n';
     
-    if (dto.alertId) {
-      const context = await this.fetchAlertContext(dto.alertId);
+    if (alertId) {
+      const context = await this.fetchAlertContext(alertId);
       prompt += context + '\n\n';
     }
 
@@ -98,7 +128,7 @@ Agent : ${alert.agent?.name || 'N/A'}
 
       const log = this.conversationLogRepo.create({
         userId,
-        alertId: dto.alertId,
+        alertId,
         userMessage: dto.message,
         aiReply: reply,
         conversationId,
@@ -168,7 +198,11 @@ Réponds STRICTEMENT dans ce format JSON, sans texte avant ou après :
 
   async getDailySummary() {
     try {
-      const stats = await this.wazuhService.getAlertStats({});
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const stats = await this.wazuhService.getAlertStats({
+        startDate: todayStart.toISOString()
+      });
       return stats;
     } catch (error) {
       console.error('Error fetching daily summary:', error);
