@@ -11,7 +11,7 @@ import { Logger } from '@nestjs/common';
 })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
-  private lastBroadcastAlertId: string | null = null;
+  private seenAlertIds = new Set<string>();
 
   @WebSocketServer()
   server: Server;
@@ -30,17 +30,33 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  @Interval(5000)
+  @Interval(3000)
   async pollNewAlerts() {
     try {
-      const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 1 });
-      const latestAlert = alerts[0];
-      if (latestAlert && latestAlert.id !== this.lastBroadcastAlertId) {
-        this.lastBroadcastAlertId = latestAlert.id;
-        this.logger.log(`Broadcasting new real-time alert: ${latestAlert.rule.description} (${latestAlert.id})`);
+      const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 10 });
+      if (!alerts || alerts.length === 0) return;
+
+      // On very first run, populate seen set without broadcasting old historical alerts
+      if (this.seenAlertIds.size === 0) {
+        alerts.forEach((alert) => this.seenAlertIds.add(alert.id));
+        return;
+      }
+
+      // Find new alerts not yet broadcasted (alerts are sorted newest first)
+      const newAlerts = alerts.filter((alert) => !this.seenAlertIds.has(alert.id)).reverse();
+
+      for (const alert of newAlerts) {
+        this.seenAlertIds.add(alert.id);
+        this.logger.log(`Broadcasting new real-time alert: ${alert.rule?.description || 'Alert'} (${alert.id})`);
         if (this.server) {
-          this.server.emit('new-alert', latestAlert);
+          this.server.emit('new-alert', alert);
         }
+      }
+
+      // Keep seenSet size bounded
+      if (this.seenAlertIds.size > 1000) {
+        const recent = Array.from(this.seenAlertIds).slice(-500);
+        this.seenAlertIds = new Set(recent);
       }
     } catch (error) {
       this.logger.warn(`Realtime polling skipped: ${error.message}`);
