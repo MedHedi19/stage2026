@@ -32,20 +32,44 @@ export class BlacklistService {
     userId: number | null,
     username: string | null,
   ): Promise<BlacklistEntry> {
-    // Check if IP is already blacklisted (idempotent)
-    const existingEntry = await this.blacklistRepository.findOne({
-      where: { ip, active: true },
+    // Check for ANY existing entry for this IP (regardless of active status)
+    const anyExistingEntry = await this.blacklistRepository.findOne({
+      where: { ip },
     });
 
-    if (existingEntry) {
-      this.logger.log(`IP ${ip} is already blacklisted, returning existing entry`);
-      return existingEntry;
+    if (anyExistingEntry) {
+      if (anyExistingEntry.active) {
+        // Already active - return unchanged (idempotent)
+        this.logger.log(`IP ${ip} is already blacklisted, returning existing entry`);
+        return anyExistingEntry;
+      } else {
+        // Inactive (was previously unblocked) - reactivate it
+        try {
+          await this.firewallService.addToSet('blacklist', ip);
+        } catch (error: any) {
+          this.logger.error(`Failed to add IP ${ip} to firewall blacklist: ${error.message}`);
+          throw error;
+        }
+
+        // Update existing row instead of creating new one
+        anyExistingEntry.active = true;
+        anyExistingEntry.reason = reason;
+        anyExistingEntry.source = source;
+        anyExistingEntry.addedBy = username ?? 'system';
+        anyExistingEntry.createdAt = new Date();
+
+        const savedEntry = await this.blacklistRepository.save(anyExistingEntry);
+        this.logger.log(`Re-activated blocked IP ${ip} (source: ${source}, reason: ${reason})`);
+
+        await this.auditService.log(userId, username, 'block_ip', ip, ip);
+        return savedEntry;
+      }
     }
 
     // Add to firewall ipset
     try {
       await this.firewallService.addToSet('blacklist', ip);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Failed to add IP ${ip} to firewall blacklist: ${error.message}`);
       throw error; // Rethrow - do NOT save DB row if firewall fails
     }

@@ -103,7 +103,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         const recent = Array.from(this.seenAlertIds).slice(-500);
         this.seenAlertIds = new Set(recent);
       }
-    } catch (error) {
+    } catch (error: any) {
       this.logger.warn(`Realtime polling skipped: ${error.message}`);
     }
   }
