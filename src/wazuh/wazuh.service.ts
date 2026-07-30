@@ -189,7 +189,7 @@ export class WazuhService {
             Authorization: `Basic ${Buffer.from(`${indexerUser}:${indexerPassword}`).toString('base64')}`,
           },
           httpsAgent: this.httpsAgent,
-          timeout: 3000,
+          timeout: 10000,
         }),
       );
       console.log('[Wazuh] Elasticsearch response status:', response.status);
@@ -284,7 +284,7 @@ export class WazuhService {
           Authorization: `Bearer ${token}`,
         },
         httpsAgent: this.httpsAgent,
-        timeout: 3000,
+        timeout: 10000,
       };
 
       const response = method === 'POST'
