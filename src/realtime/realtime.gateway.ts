@@ -64,16 +64,23 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         const srcIp = alert.data?.src_ip;
         if (srcIp) {
           try {
+            // Extract SID from correct path: alert.data.alert.signature_id (string)
+            const sid = Number(alert.data?.alert?.signature_id);
+            const isInAutoBlockList = AUTO_BLOCK_SIDS.includes(sid);
+
             // Check whitelist first
             const isWhitelisted = await this.whitelistService.isWhitelisted(srcIp);
+
+            // Debug logging
+            console.log('[Auto-Block] srcIp:', srcIp, 'sid:', sid, 'inAutoBlockList:', isInAutoBlockList, 'isWhitelisted:', isWhitelisted);
+
             if (isWhitelisted) {
               this.logger.log(`IP ${srcIp} is whitelisted, skipping auto-block`);
               continue;
             }
 
             // Check if SID triggers auto-block
-            const sid = alert.rule?.id;
-            if (sid && AUTO_BLOCK_SIDS.includes(parseInt(sid, 10))) {
+            if (isInAutoBlockList) {
               const description = alert.rule?.description || 'Unknown threat';
               await this.blacklistService.block(
                 srcIp,

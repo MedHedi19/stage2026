@@ -27,6 +27,11 @@ export interface WazuhAlert {
     protocol?: string;
     path?: string;
     modification?: string;
+    alert?: {
+      signature_id?: string;
+      category?: string;
+      action?: string;
+    };
   };
 }
 
