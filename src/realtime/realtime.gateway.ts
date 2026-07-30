@@ -3,6 +3,10 @@ import { Server, Socket } from 'socket.io';
 import { Interval } from '@nestjs/schedule';
 import { WazuhService } from '../wazuh/wazuh.service';
 import { Logger } from '@nestjs/common';
+import { WhitelistService } from '../firewall/whitelist.service';
+import { BlacklistService } from '../firewall/blacklist.service';
+import { BlockSource } from '../firewall/entities/blacklist-entry.entity';
+import { AUTO_BLOCK_SIDS } from '../firewall/auto-block.config';
 
 @WebSocketGateway({
   cors: {
@@ -16,7 +20,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @WebSocketServer()
   server: Server;
 
-  constructor(private readonly wazuhService: WazuhService) {}
+  constructor(
+    private readonly wazuhService: WazuhService,
+    private readonly whitelistService: WhitelistService,
+    private readonly blacklistService: BlacklistService,
+  ) {}
 
   afterInit(server: Server) {
     this.logger.log('WebSocket Gateway Initialized');
@@ -50,6 +58,36 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
         this.logger.log(`Broadcasting new real-time alert: ${alert.rule?.description || 'Alert'} (${alert.id})`);
         if (this.server) {
           this.server.emit('new-alert', alert);
+        }
+
+        // Auto-block logic
+        const srcIp = alert.data?.src_ip;
+        if (srcIp) {
+          try {
+            // Check whitelist first
+            const isWhitelisted = await this.whitelistService.isWhitelisted(srcIp);
+            if (isWhitelisted) {
+              this.logger.log(`IP ${srcIp} is whitelisted, skipping auto-block`);
+              continue;
+            }
+
+            // Check if SID triggers auto-block
+            const sid = alert.rule?.id;
+            if (sid && AUTO_BLOCK_SIDS.includes(parseInt(sid, 10))) {
+              const description = alert.rule?.description || 'Unknown threat';
+              await this.blacklistService.block(
+                srcIp,
+                `Auto-blocked: ${description}`,
+                BlockSource.AUTO,
+                null,
+                null,
+              );
+              this.logger.log(`Auto-blocked IP ${srcIp} for SID ${sid}`);
+            }
+          } catch (error: any) {
+            this.logger.error(`Auto-block failed for IP ${srcIp}: ${error.message}`);
+            // Continue - don't break alert broadcast
+          }
         }
       }
 

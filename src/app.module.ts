@@ -15,12 +15,15 @@ import { WazuhModule } from './wazuh/wazuh.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ReportsModule } from './reports/reports.module';
 import { AssistantModule } from './assistant/assistant.module';
+import { FirewallModule } from './firewall/firewall.module';
 
 // Entities
 import { User } from './users/entities/user.entity';
 import { AuditLog } from './audit/entities/audit-log.entity';
 import { Report } from './reports/entities/report.entity';
 import { ConversationLog } from './assistant/entities/conversation-log.entity';
+import { BlacklistEntry } from './firewall/entities/blacklist-entry.entity';
+import { WhitelistEntry } from './firewall/entities/whitelist-entry.entity';
 
 @Module({
   imports: [
@@ -51,7 +54,7 @@ import { ConversationLog } from './assistant/entities/conversation-log.entity';
         username: configService.get<string>('DB_USERNAME') || 'ids_app',
         password: configService.get<string>('DB_PASSWORD') || '',
         database: configService.get<string>('DB_DATABASE') || 'ids_ips_db',
-        entities: [User, AuditLog, Report, ConversationLog],
+        entities: [User, AuditLog, Report, ConversationLog, BlacklistEntry, WhitelistEntry],
         // synchronize: true should ONLY be used in development.
         // It automatically aligns the MySQL schema with TypeORM definitions on startup.
         synchronize: true,
@@ -64,6 +67,7 @@ import { ConversationLog } from './assistant/entities/conversation-log.entity';
     RealtimeModule,
     ReportsModule,
     AssistantModule,
+    FirewallModule,
   ],
   controllers: [AppController],
   providers: [AppService],

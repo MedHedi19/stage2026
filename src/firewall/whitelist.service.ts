@@ -1,0 +1,107 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { WhitelistEntry } from './entities/whitelist-entry.entity';
+import { FirewallService } from './firewall.service';
+import { AuditService } from '../audit/audit.service';
+
+@Injectable()
+export class WhitelistService {
+  private readonly logger = new Logger(WhitelistService.name);
+
+  constructor(
+    @InjectRepository(WhitelistEntry)
+    private whitelistRepository: Repository<WhitelistEntry>,
+    private readonly firewallService: FirewallService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  /**
+   * Add an IP to whitelist
+   * @param ip - IP address to whitelist
+   * @param reason - Reason for whitelisting
+   * @param userId - User ID who initiated the add
+   * @param username - Username who initiated the add
+   * @returns The whitelist entry (existing if already whitelisted, new if just added)
+   */
+  async add(
+    ip: string,
+    reason: string,
+    userId: number,
+    username: string,
+  ): Promise<WhitelistEntry> {
+    // Check if IP is already whitelisted (idempotent)
+    const existingEntry = await this.whitelistRepository.findOne({
+      where: { ip },
+    });
+
+    if (existingEntry) {
+      this.logger.log(`IP ${ip} is already whitelisted, returning existing entry`);
+      return existingEntry;
+    }
+
+    // Add to firewall ipset
+    try {
+      await this.firewallService.addToSet('whitelist', ip);
+    } catch (error: any) {
+      this.logger.error(`Failed to add IP ${ip} to firewall whitelist: ${error.message}`);
+      throw error; // Rethrow - do NOT save DB row if firewall fails
+    }
+
+    // Save to database
+    const entry = this.whitelistRepository.create({
+      ip,
+      reason,
+      addedBy: username,
+    });
+
+    const savedEntry = await this.whitelistRepository.save(entry);
+    this.logger.log(`Whitelisted IP ${ip} (reason: ${reason})`);
+
+    // Audit log
+    await this.auditService.log(userId, username, 'add_whitelist', ip, ip);
+
+    return savedEntry;
+  }
+
+  /**
+   * Remove an IP from whitelist
+   * @param ip - IP address to remove
+   * @param userId - User ID who initiated the removal
+   * @param username - Username who initiated the removal
+   */
+  async remove(ip: string, userId: number, username: string): Promise<void> {
+    // Remove from firewall ipset
+    await this.firewallService.removeFromSet('whitelist', ip);
+
+    // Delete from database
+    const result = await this.whitelistRepository.delete({ ip });
+
+    this.logger.log(`Removed IP ${ip} from whitelist, deleted ${result.affected} entries`);
+
+    // Audit log
+    await this.auditService.log(userId, username, 'remove_whitelist', ip, ip);
+  }
+
+  /**
+   * List all whitelist entries
+   * @returns Array of whitelist entries ordered by createdAt DESC
+   */
+  async list(): Promise<WhitelistEntry[]> {
+    return this.whitelistRepository.find({
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Check if an IP is whitelisted
+   * @param ip - IP address to check
+   * @returns true if IP is whitelisted, false otherwise
+   */
+  async isWhitelisted(ip: string): Promise<boolean> {
+    const count = await this.whitelistRepository.count({
+      where: { ip },
+    });
+    return count > 0;
+  }
+}
