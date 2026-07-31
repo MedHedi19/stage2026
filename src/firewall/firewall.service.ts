@@ -56,7 +56,7 @@ export class FirewallService {
     this.validateIp(ip);
 
     try {
-      await execFileAsync('sudo', ['ipset', 'del', setName, ip]);
+      await execFileAsync('sudo', ['ipset', 'del', setName, ip, '-exist']);
       this.logger.log(`Removed IP ${ip} from ${setName}`);
     } catch (error: any) {
       this.logger.error(`Failed to remove IP ${ip} from ${setName}: ${error.message}`);

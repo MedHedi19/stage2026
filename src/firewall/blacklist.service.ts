@@ -99,8 +99,13 @@ export class BlacklistService {
    * @param username - Username who initiated the unblock
    */
   async unblock(ip: string, userId: number, username: string): Promise<void> {
-    // Remove from firewall ipset
-    await this.firewallService.removeFromSet('blacklist', ip);
+    // Remove from firewall ipset (tolerant of failures)
+    try {
+      await this.firewallService.removeFromSet('blacklist', ip);
+    } catch (error: any) {
+      this.logger.warn(`Failed to remove IP ${ip} from firewall blacklist (continuing): ${error.message}`);
+      // Continue - DB state is more important than ipset state
+    }
 
     // Update database entries to inactive
     const result = await this.blacklistRepository.update(

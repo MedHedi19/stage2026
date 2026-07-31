@@ -71,8 +71,13 @@ export class WhitelistService {
    * @param username - Username who initiated the removal
    */
   async remove(ip: string, userId: number, username: string): Promise<void> {
-    // Remove from firewall ipset
-    await this.firewallService.removeFromSet('whitelist', ip);
+    // Remove from firewall ipset (tolerant of failures)
+    try {
+      await this.firewallService.removeFromSet('whitelist', ip);
+    } catch (error: any) {
+      this.logger.warn(`Failed to remove IP ${ip} from firewall whitelist (continuing): ${error.message}`);
+      // Continue - DB state is more important than ipset state
+    }
 
     // Delete from database
     const result = await this.whitelistRepository.delete({ ip });
