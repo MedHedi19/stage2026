@@ -61,7 +61,7 @@ export class BlacklistService {
         const savedEntry = await this.blacklistRepository.save(anyExistingEntry);
         this.logger.log(`Re-activated blocked IP ${ip} (source: ${source}, reason: ${reason})`);
 
-        await this.auditService.log(userId, username, 'block_ip', ip, ip);
+        await this.auditService.log(userId, username, 'block_ip', `${ip} - Reason: ${reason}`, ip);
         return savedEntry;
       }
     }
@@ -87,7 +87,7 @@ export class BlacklistService {
     this.logger.log(`Blocked IP ${ip} (source: ${source}, reason: ${reason})`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'block_ip', ip, ip);
+    await this.auditService.log(userId, username, 'block_ip', `${ip} - Reason: ${reason}`, ip);
 
     return savedEntry;
   }
@@ -99,6 +99,10 @@ export class BlacklistService {
    * @param username - Username who initiated the unblock
    */
   async unblock(ip: string, userId: number, username: string): Promise<void> {
+    // Fetch the entry to get the reason before unblocking
+    const entry = await this.blacklistRepository.findOne({ where: { ip, active: true } });
+    const reason = entry?.reason || 'Unknown';
+
     // Remove from firewall ipset (tolerant of failures)
     try {
       await this.firewallService.removeFromSet('blacklist', ip);
@@ -116,7 +120,7 @@ export class BlacklistService {
     this.logger.log(`Unblocked IP ${ip}, updated ${result.affected} entries`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'unblock_ip', ip, ip);
+    await this.auditService.log(userId, username, 'unblock_ip', `${ip} - Reason: ${reason}`, ip);
   }
 
   /**

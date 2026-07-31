@@ -59,7 +59,7 @@ export class WhitelistService {
     this.logger.log(`Whitelisted IP ${ip} (reason: ${reason})`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'add_whitelist', ip, ip);
+    await this.auditService.log(userId, username, 'add_whitelist', `${ip} - Reason: ${reason}`, ip);
 
     return savedEntry;
   }
@@ -71,6 +71,10 @@ export class WhitelistService {
    * @param username - Username who initiated the removal
    */
   async remove(ip: string, userId: number, username: string): Promise<void> {
+    // Fetch the entry to get the reason before removing
+    const entry = await this.whitelistRepository.findOne({ where: { ip } });
+    const reason = entry?.reason || 'Unknown';
+
     // Remove from firewall ipset (tolerant of failures)
     try {
       await this.firewallService.removeFromSet('whitelist', ip);
@@ -85,7 +89,7 @@ export class WhitelistService {
     this.logger.log(`Removed IP ${ip} from whitelist, deleted ${result.affected} entries`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'remove_whitelist', ip, ip);
+    await this.auditService.log(userId, username, 'remove_whitelist', `${ip} - Reason: ${reason}`, ip);
   }
 
   /**

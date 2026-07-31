@@ -50,8 +50,9 @@ export class UsersService {
     return this.userRepository.findOne({ where: { username } });
   }
 
-  async update(id: number, attrs: Partial<User> & { password?: string }): Promise<User> {
+  async update(id: number, attrs: Partial<User> & { password?: string }): Promise<{ user: User; changedFields: string[] }> {
     const user = await this.findOne(id);
+    const changedFields: string[] = [];
     
     if (attrs.username && attrs.username !== user.username) {
       const existing = await this.userRepository.findOne({ where: { username: attrs.username } });
@@ -59,14 +60,17 @@ export class UsersService {
         throw new ConflictException('Username already exists');
       }
       user.username = attrs.username;
+      changedFields.push('username');
     }
 
     if (attrs.password) {
       user.passwordHash = await bcrypt.hash(attrs.password, 12);
+      changedFields.push('password');
     }
 
     if (attrs.role) {
       user.role = attrs.role;
+      changedFields.push('role');
     }
 
     if (attrs.mfaEnabled !== undefined) {
@@ -74,18 +78,22 @@ export class UsersService {
       if (!attrs.mfaEnabled) {
         user.mfaSecret = null;
       }
+      changedFields.push('mfaEnabled');
     }
 
     if (attrs.mfaSecret !== undefined) {
       user.mfaSecret = attrs.mfaSecret;
+      changedFields.push('mfaSecret');
     }
 
-    return this.userRepository.save(user);
+    const savedUser = await this.userRepository.save(user);
+    return { user: savedUser, changedFields };
   }
 
-  async remove(id: number): Promise<void> {
+  async remove(id: number): Promise<User> {
     const user = await this.findOne(id);
     await this.userRepository.remove(user);
+    return user;
   }
 
   async verifyPassword(id: number, plainPassword: string): Promise<boolean> {

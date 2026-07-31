@@ -9,12 +9,16 @@ import { Roles } from '../roles/roles.decorator';
 import { UserRole } from './entities/user.entity';
 import { AuditAction } from '../audit/audit-action.decorator';
 import { AuditLogInterceptor } from '../audit/audit-log.interceptor';
+import { AuditService } from '../audit/audit.service';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @UseInterceptors(AuditLogInterceptor)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Get('me')
   getProfile(@Request() req) {
@@ -43,7 +47,19 @@ export class UsersController {
       attrs.password = body.newPassword;
     }
 
-    return this.usersService.update(userId, attrs);
+    const result = await this.usersService.update(userId, attrs);
+    
+    // Log with changed fields
+    const changedFieldsStr = result.changedFields.length > 0 ? result.changedFields.join(', ') : 'none';
+    await this.auditService.log(
+      req.user.id,
+      req.user.username,
+      'Update Own Profile',
+      `User: ${req.user.username} - Changed: ${changedFieldsStr}`,
+      req.ip,
+    );
+    
+    return result.user;
   }
 
   @Get()
@@ -65,23 +81,55 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @AuditAction('Create User')
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto.username, createUserDto.password, createUserDto.role);
+  async create(@Request() req, @Body() createUserDto: CreateUserDto) {
+    const user = await this.usersService.create(createUserDto.username, createUserDto.password, createUserDto.role);
+    
+    // Log with username
+    await this.auditService.log(
+      req.user.id,
+      req.user.username,
+      'Create User',
+      `Created user: ${createUserDto.username} (role: ${createUserDto.role})`,
+      req.ip,
+    );
+    
+    return user;
   }
 
   @Put(':id')
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @AuditAction('Update User')
-  update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+  async update(@Request() req, @Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
+    const result = await this.usersService.update(id, updateUserDto);
+    
+    // Log with username and changed fields
+    const changedFieldsStr = result.changedFields.length > 0 ? result.changedFields.join(', ') : 'none';
+    await this.auditService.log(
+      req.user.id,
+      req.user.username,
+      'Update User',
+      `User: ${result.user.username} - Changed: ${changedFieldsStr}`,
+      req.ip,
+    );
+    
+    return result.user;
   }
 
   @Delete(':id')
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @AuditAction('Delete User')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.remove(id);
+  async remove(@Request() req, @Param('id', ParseIntPipe) id: number) {
+    const user = await this.usersService.remove(id);
+    
+    // Log with username
+    await this.auditService.log(
+      req.user.id,
+      req.user.username,
+      'Delete User',
+      `Deleted user: ${user.username} (role: ${user.role})`,
+      req.ip,
+    );
   }
 }
