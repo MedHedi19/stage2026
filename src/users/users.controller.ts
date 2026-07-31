@@ -26,7 +26,6 @@ export class UsersController {
   }
 
   @Put('me')
-  @AuditAction('Update Own Profile')
   async updateMe(@Request() req, @Body() body: { username?: string; currentPassword?: string; newPassword?: string }) {
     const userId = req.user.id;
     const attrs: any = {};
@@ -80,7 +79,6 @@ export class UsersController {
   @Post()
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  @AuditAction('Create User')
   async create(@Request() req, @Body() createUserDto: CreateUserDto) {
     const user = await this.usersService.create(createUserDto.username, createUserDto.password, createUserDto.role);
     
@@ -99,7 +97,6 @@ export class UsersController {
   @Put(':id')
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  @AuditAction('Update User')
   async update(@Request() req, @Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
     const result = await this.usersService.update(id, updateUserDto);
     
