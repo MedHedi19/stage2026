@@ -119,10 +119,9 @@ export class UsersController {
   @Delete(':id')
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @AuditAction('Delete User')
   async remove(@Request() req, @Param('id', ParseIntPipe) id: number) {
     const user = await this.usersService.remove(id);
-    
+
     // Log with username
     await this.auditService.log(
       req.user.id,
