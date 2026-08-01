@@ -59,7 +59,7 @@ export class WhitelistService {
     this.logger.log(`Whitelisted IP ${ip} (reason: ${reason})`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'add_whitelist', `${ip} - Reason: ${reason}`, ip);
+    await this.auditService.log(userId, username, 'Add to Whitelist', `${ip} - Reason: ${reason}`, ip);
 
     return savedEntry;
   }
@@ -89,7 +89,7 @@ export class WhitelistService {
     this.logger.log(`Removed IP ${ip} from whitelist, deleted ${result.affected} entries`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'remove_whitelist', `${ip} - Reason: ${reason}`, ip);
+    await this.auditService.log(userId, username, 'Remove from Whitelist', `${ip} - Reason: ${reason}`, ip);
   }
 
   /**

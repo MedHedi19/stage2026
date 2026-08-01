@@ -102,7 +102,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid verification code');
     }
 
-    const updatedUser = await this.usersService.update(userId, { mfaEnabled: true });
+    const { user: updatedUser } = await this.usersService.update(userId, { mfaEnabled: true });
 
     return {
       accessToken: this.generateAccessToken(updatedUser),

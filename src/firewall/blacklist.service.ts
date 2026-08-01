@@ -61,7 +61,7 @@ export class BlacklistService {
         const savedEntry = await this.blacklistRepository.save(anyExistingEntry);
         this.logger.log(`Re-activated blocked IP ${ip} (source: ${source}, reason: ${reason})`);
 
-        await this.auditService.log(userId, username, 'block_ip', `${ip} - Reason: ${reason}`, ip);
+        await this.auditService.log(userId, username, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
         return savedEntry;
       }
     }
@@ -87,7 +87,7 @@ export class BlacklistService {
     this.logger.log(`Blocked IP ${ip} (source: ${source}, reason: ${reason})`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'block_ip', `${ip} - Reason: ${reason}`, ip);
+    await this.auditService.log(userId, username, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
 
     return savedEntry;
   }
@@ -120,7 +120,7 @@ export class BlacklistService {
     this.logger.log(`Unblocked IP ${ip}, updated ${result.affected} entries`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'unblock_ip', `${ip} - Reason: ${reason}`, ip);
+    await this.auditService.log(userId, username, 'Remove from Blacklist', `${ip} - Reason: ${reason}`, ip);
   }
 
   /**

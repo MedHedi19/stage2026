@@ -28,7 +28,6 @@ export class FirewallController {
 
   @Post('blacklist')
   @Roles(UserRole.ADMIN)
-  @AuditAction('Add to Blacklist')
   async addToBlacklist(@Body() addIpDto: AddIpDto, @Request() req) {
     return this.blacklistService.block(
       addIpDto.ip,
@@ -41,7 +40,6 @@ export class FirewallController {
 
   @Delete('blacklist/:ip')
   @Roles(UserRole.ADMIN)
-  @AuditAction('Remove from Blacklist')
   async removeFromBlacklist(@Param('ip') ip: string, @Request() req) {
     await this.blacklistService.unblock(ip, req.user.id, req.user.username);
   }
@@ -55,7 +53,6 @@ export class FirewallController {
 
   @Post('whitelist')
   @Roles(UserRole.ADMIN)
-  @AuditAction('Add to Whitelist')
   async addToWhitelist(@Body() addIpDto: AddIpDto, @Request() req) {
     return this.whitelistService.add(
       addIpDto.ip,
@@ -67,7 +64,6 @@ export class FirewallController {
 
   @Delete('whitelist/:ip')
   @Roles(UserRole.ADMIN)
-  @AuditAction('Remove from Whitelist')
   async removeFromWhitelist(@Param('ip') ip: string, @Request() req) {
     await this.whitelistService.remove(ip, req.user.id, req.user.username);
   }
