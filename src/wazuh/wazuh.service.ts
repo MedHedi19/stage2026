@@ -3,6 +3,10 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
 import * as https from 'https';
+import {
+  classifyAlertCategory,
+  consolidateCategories,
+} from '../common/alert-classifier';
 
 export interface WazuhAlert {
   id: string;
@@ -235,16 +239,8 @@ export class WazuhService {
       const level = alert.rule.level;
       severityDistribution[level] = (severityDistribution[level] || 0) + 1;
 
-      // Grouping by type (Suricata description vs syslog description)
-      const desc = alert.rule.description;
-      let category = 'Other Security Event';
-      if (desc.includes('SQL Injection')) category = 'SQL Injection';
-      else if (desc.includes('SSH')) category = 'SSH Brute Force';
-      else if (desc.includes('Shellshock')) category = 'Exploit (Shellshock)';
-      else if (desc.includes('sudoers')) category = 'Privilege Escalation';
-      else if (desc.includes('port scan') || desc.includes('Nmap')) category = 'Port Scanning';
-      else if (desc.includes('File Integrity') || desc.includes('fim')) category = 'FIM Change';
-
+      // Grouping by type — detailed classification
+      const category = classifyAlertCategory(alert);
       attacksByType[category] = (attacksByType[category] || 0) + 1;
 
       // Top source IPs
@@ -272,7 +268,7 @@ export class WazuhService {
     return {
       totalAlerts,
       severityDistribution,
-      attacksByType,
+      attacksByType: consolidateCategories(attacksByType),
       topSourceIps: topSourceIpsList,
       alertsOverTime: overTimeList,
     };

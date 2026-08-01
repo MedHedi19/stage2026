@@ -6,6 +6,10 @@ import { WazuhService } from '../wazuh/wazuh.service';
 import PDFDocument from 'pdfkit';
 import { Workbook } from 'exceljs';
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
+import {
+  classifyAlertCategory,
+  consolidateCategories,
+} from '../common/alert-classifier';
 
 @Injectable()
 export class ReportsService {
@@ -61,10 +65,11 @@ export class ReportsService {
   async getHistory(): Promise<any[]> {
     const reports = await this.reportRepository.find({
       order: { createdAt: 'DESC' },
+      relations: ['user'],
     });
     return reports.map((r) => ({
       id: r.id,
-      createdBy: r.username ?? '—',
+      createdBy: r.username || r.user?.username || '—',
       format: r.format,
       filename: `security-report-${r.createdAt.toISOString().replace(/[:.]/g, '-')}.${r.format === 'excel' ? 'xlsx' : r.format}`,
       createdAt: r.createdAt,
@@ -131,16 +136,8 @@ export class ReportsService {
       const level = alert.rule.level;
       severityCounts[level] = (severityCounts[level] || 0) + 1;
 
-      // Grouping by type
-      const desc = alert.rule.description || '';
-      let category = 'Autre (Sécurité)';
-      if (desc.includes('SQL Injection')) category = 'SQL Injection';
-      else if (desc.includes('SSH')) category = 'SSH Brute Force';
-      else if (desc.includes('Shellshock')) category = 'Exploit (Shellshock)';
-      else if (desc.includes('sudoers')) category = 'Privilege Escalation';
-      else if (desc.includes('port scan') || desc.includes('Nmap')) category = 'Port Scanning';
-      else if (desc.includes('File Integrity') || desc.includes('fim')) category = 'FIM Change';
-
+      // Grouping by type — detailed classification (no vague "Autre")
+      const category = classifyAlertCategory(alert);
       attacksByType[category] = (attacksByType[category] || 0) + 1;
 
       // Over time (grouped by hour)
@@ -165,7 +162,7 @@ export class ReportsService {
       totalSecurityEvents: securityAlerts.length,
       noiseFiltered: rawAlerts.length - securityAlerts.length,
       severityDistribution: severityCounts,
-      attacksByType,
+      attacksByType: consolidateCategories(attacksByType),
       alertsOverTime: overTimeList,
       topSourceIPs: Object.entries(topSourceIPs)
         .sort((a, b) => (b[1] as number) - (a[1] as number))
