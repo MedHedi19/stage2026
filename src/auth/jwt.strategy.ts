@@ -27,8 +27,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (payload.mfaRequired) {
       throw new UnauthorizedException('MFA verification required');
     }
+    
     try {
       const user = await this.usersService.findOne(payload.sub);
+      
+      // Allow users without MFA to access only the MFA setup endpoint
+      // Other endpoints will enforce MFA requirement in the route guards
       return {
         id: user.id,
         username: user.username,

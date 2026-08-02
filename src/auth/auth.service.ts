@@ -34,6 +34,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Always require MFA verification
     if (user.mfaEnabled) {
       const payload = {
         sub: user.id,
@@ -48,10 +49,25 @@ export class AuthService {
       };
     }
 
+    // MFA not enabled - give them a limited token to setup MFA
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      role: user.role,
+      mfaEnabled: false,
+    };
+    const accessToken = this.jwtService.sign(payload);
+    
     return {
       mfaRequired: false,
-      accessToken: this.generateAccessToken(user),
-      user,
+      mfaSetupRequired: true,
+      accessToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        mfaEnabled: false,
+      },
     };
   }
 
@@ -105,6 +121,7 @@ export class AuthService {
     const { user: updatedUser } = await this.usersService.update(userId, { mfaEnabled: true });
 
     return {
+      success: true,
       accessToken: this.generateAccessToken(updatedUser),
       user: {
         id: updatedUser.id,
