@@ -65,7 +65,7 @@ export class ReportsService {
   async getHistory(): Promise<any[]> {
     const reports = await this.reportRepository.find({
       order: { createdAt: 'DESC' },
-      relations: ['user'],
+      relations: { user: true },
     });
     return reports.map((r) => ({
       id: r.id,
