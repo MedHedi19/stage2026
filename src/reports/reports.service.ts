@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Report } from './entities/report.entity';
 import { WazuhService } from '../wazuh/wazuh.service';
+import { AuditService } from '../audit/audit.service';
 import PDFDocument from 'pdfkit';
 import { Workbook } from 'exceljs';
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
@@ -10,6 +11,7 @@ import {
   classifyAlertCategory,
   consolidateCategories,
 } from '../common/alert-classifier';
+import { ReportType } from './report-types.enum';
 
 @Injectable()
 export class ReportsService {
@@ -17,44 +19,64 @@ export class ReportsService {
     @InjectRepository(Report)
     private readonly reportRepository: Repository<Report>,
     private readonly wazuhService: WazuhService,
+    private readonly auditService: AuditService,
   ) {}
 
   async generateReport(
     userId: number,
     username: string,
+    reportType: ReportType,
     format: 'pdf' | 'excel',
     filters: { severity?: number; ip?: string; startDate?: string; endDate?: string },
   ): Promise<{ buffer: Buffer; filename: string }> {
-    // 1. Fetch filtered alerts from Wazuh integration
-    const alerts = await this.wazuhService.fetchRecentAlerts({
-      severity: filters.severity,
-      ip: filters.ip,
-      startDate: filters.startDate,
-      endDate: filters.endDate,
-      limit: 1000, // retrieve a rich batch for reporting
-    });
-
-    // 2. Filter and process alerts for SOC relevance
-    const processedAlerts = this.processAlertsForSOC(alerts);
-
-    // 3. Generate appropriate document buffer
+    // Route to appropriate report generator based on type
     let buffer: Buffer;
     let filename: string;
     const timestampStr = new Date().toISOString().replace(/[:.]/g, '-');
 
-    if (format === 'pdf') {
-      buffer = await this.generatePdfBuffer(processedAlerts, filters);
-      filename = `security-report-${timestampStr}.pdf`;
-    } else {
-      buffer = await this.generateExcelBuffer(processedAlerts, filters);
-      filename = `security-report-${timestampStr}.xlsx`;
+    switch (reportType) {
+      case ReportType.USER_ACTIVITY:
+        buffer = await this.generateUserActivityReport(format, filters);
+        filename = `user-activity-report-${timestampStr}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+        break;
+      case ReportType.EXECUTIVE_SUMMARY:
+        buffer = await this.generateExecutiveSummaryReport(format, filters);
+        filename = `executive-summary-report-${timestampStr}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+        break;
+      case ReportType.THREAT_INTELLIGENCE:
+        buffer = await this.generateThreatIntelligenceReport(format, filters);
+        filename = `threat-intelligence-report-${timestampStr}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+        break;
+      case ReportType.INCIDENT_DETAIL:
+        buffer = await this.generateIncidentDetailReport(format, filters);
+        filename = `incident-detail-report-${timestampStr}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+        break;
+      default:
+        // Default to original behavior for backward compatibility
+        const alerts = await this.wazuhService.fetchRecentAlerts({
+          severity: filters.severity,
+          ip: filters.ip,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          limit: 1000,
+        });
+        const processedAlerts = this.processAlertsForSOC(alerts);
+        
+        if (format === 'pdf') {
+          buffer = await this.generatePdfBuffer(processedAlerts, filters);
+          filename = `security-report-${timestampStr}.pdf`;
+        } else {
+          buffer = await this.generateExcelBuffer(processedAlerts, filters);
+          filename = `security-report-${timestampStr}.xlsx`;
+        }
     }
 
-    // 4. Insert metadata record in MySQL database
+    // Insert metadata record in MySQL database
     const report = this.reportRepository.create({
       userId,
       username,
       format,
+      reportType,
       filters: JSON.stringify(filters),
     });
     await this.reportRepository.save(report);
@@ -71,6 +93,7 @@ export class ReportsService {
       id: r.id,
       createdBy: r.username || r.user?.username || '—',
       format: r.format,
+      reportType: r.reportType || 'standard',
       filename: `security-report-${r.createdAt.toISOString().replace(/[:.]/g, '-')}.${r.format === 'excel' ? 'xlsx' : r.format}`,
       createdAt: r.createdAt,
     }));
@@ -509,5 +532,485 @@ export class ReportsService {
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer as any);
+  }
+
+  // User Activity Report Generator
+  private async generateUserActivityReport(format: 'pdf' | 'excel', filters: any): Promise<Buffer> {
+    const auditLogs = await this.auditService.findAll({
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    });
+
+    if (format === 'pdf') {
+      return this.generateUserActivityPdf(auditLogs, filters);
+    } else {
+      return this.generateUserActivityExcel(auditLogs, filters);
+    }
+  }
+
+  private async generateUserActivityPdf(auditLogs: any[], filters: any): Promise<Buffer> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        const chunks: Buffer[] = [];
+
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', err => reject(err));
+
+        // Header
+        doc.fontSize(22).text('User Activity Report', { align: 'center' });
+        doc.fontSize(12).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.moveDown();
+
+        // Summary
+        doc.fontSize(16).fillColor('#0b192c').text('Summary', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+        doc.fontSize(12).text(`Total Activities: ${auditLogs.length}`);
+        
+        // Activity by user
+        const userActivities: Record<string, number> = {};
+        auditLogs.forEach(log => {
+          const username = log.username || 'Unknown';
+          userActivities[username] = (userActivities[username] || 0) + 1;
+        });
+
+        doc.moveDown();
+        doc.fontSize(16).fillColor('#0b192c').text('Activities by User', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+
+        Object.entries(userActivities).forEach(([username, count]) => {
+          doc.fontSize(12).text(`• ${username}: ${count} activities`);
+        });
+
+        // Recent activities
+        doc.moveDown();
+        doc.fontSize(16).fillColor('#0b192c').text('Recent Activities', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+
+        auditLogs.slice(0, 50).forEach((log: any) => {
+          doc.fontSize(10).text(`${new Date(log.timestamp).toLocaleString()} - ${log.username || 'Unknown'}: ${log.action}`);
+          if (log.targetEntity) {
+            doc.fontSize(9).fillColor('gray').text(`  Target: ${log.targetEntity}`);
+          }
+          if (log.ipAddress) {
+            doc.fontSize(9).fillColor('gray').text(`  IP: ${log.ipAddress}`);
+          }
+          doc.fillColor('black').moveDown(0.3);
+        });
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  private async generateUserActivityExcel(auditLogs: any[], filters: any): Promise<Buffer> {
+    const workbook = new Workbook();
+    const worksheet = workbook.addWorksheet('User Activity');
+
+    // Header
+    worksheet.addRow(['User Activity Report']);
+    worksheet.addRow(['Generated', new Date().toLocaleString()]);
+    worksheet.addRow(['Total Activities', auditLogs.length]);
+    worksheet.addRow([]);
+
+    // Activities
+    worksheet.addRow(['Timestamp', 'Username', 'Action', 'Target Entity', 'IP Address']);
+    worksheet.getRow(5).font = { bold: true };
+
+    auditLogs.forEach((log: any) => {
+      worksheet.addRow([
+        new Date(log.timestamp).toLocaleString(),
+        log.username || 'Unknown',
+        log.action,
+        log.targetEntity || 'N/A',
+        log.ipAddress || 'N/A'
+      ]);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer as any);
+  }
+
+  // Executive Summary Report Generator
+  private async generateExecutiveSummaryReport(format: 'pdf' | 'excel', filters: any): Promise<Buffer> {
+    const alerts = await this.wazuhService.fetchRecentAlerts({
+      severity: filters.severity,
+      ip: filters.ip,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      limit: 1000,
+    });
+
+    const processedAlerts = this.processAlertsForSOC(alerts);
+
+    if (format === 'pdf') {
+      return this.generateExecutiveSummaryPdf(processedAlerts, filters);
+    } else {
+      return this.generateExecutiveSummaryExcel(processedAlerts, filters);
+    }
+  }
+
+  private async generateExecutiveSummaryPdf(processedData: any, filters: any): Promise<Buffer> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        const chunks: Buffer[] = [];
+
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', err => reject(err));
+
+        // Header
+        doc.fontSize(22).text('Executive Summary Report', { align: 'center' });
+        doc.fontSize(12).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.moveDown();
+
+        // Key Metrics
+        doc.fontSize(16).fillColor('#0b192c').text('Key Security Metrics', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+        
+        doc.fontSize(12).text(`Total Security Events: ${processedData.totalSecurity}`);
+        doc.text(`Total Raw Events: ${processedData.totalRaw}`);
+        doc.text(`Noise Filtered: ${processedData.summary.noiseFiltered}`);
+        doc.text(`Incidents Detected: ${processedData.incidents.length}`);
+        doc.moveDown();
+
+        // Risk Assessment
+        doc.fontSize(16).fillColor('#0b192c').text('Risk Assessment', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+        
+        const highSeverity = processedData.summary.severityDistribution['high'] || 0;
+        const mediumSeverity = processedData.summary.severityDistribution['medium'] || 0;
+        const riskLevel = highSeverity > 10 ? 'HIGH' : mediumSeverity > 20 ? 'MEDIUM' : 'LOW';
+        
+        const riskColor = riskLevel === 'HIGH' ? 'red' : riskLevel === 'MEDIUM' ? 'orange' : 'green';
+        doc.fontSize(14).fillColor(riskColor).text(`Overall Risk Level: ${riskLevel}`);
+        doc.fillColor('black').moveDown();
+
+        // Top Attack Types
+        doc.fontSize(16).fillColor('#0b192c').text('Top Attack Types', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+
+        const attackTypes = Object.entries(processedData.summary.attacksByType)
+          .sort((a, b) => (b[1] as number) - (a[1] as number))
+          .slice(0, 5);
+
+        attackTypes.forEach(([type, count]) => {
+          doc.fontSize(12).text(`• ${type}: ${count} incidents`);
+        });
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  private async generateExecutiveSummaryExcel(processedData: any, filters: any): Promise<Buffer> {
+    const workbook = new Workbook();
+    const worksheet = workbook.addWorksheet('Executive Summary');
+
+    // Header
+    worksheet.addRow(['Executive Summary Report']);
+    worksheet.addRow(['Generated', new Date().toLocaleString()]);
+    worksheet.addRow([]);
+
+    // Key Metrics
+    worksheet.addRow(['Key Security Metrics']);
+    worksheet.addRow(['Total Security Events', processedData.totalSecurity]);
+    worksheet.addRow(['Total Raw Events', processedData.totalRaw]);
+    worksheet.addRow(['Noise Filtered', processedData.summary.noiseFiltered]);
+    worksheet.addRow(['Incidents Detected', processedData.incidents.length]);
+    worksheet.addRow([]);
+
+    // Risk Assessment
+    worksheet.addRow(['Risk Assessment']);
+    const highSeverity = processedData.summary.severityDistribution['high'] || 0;
+    const mediumSeverity = processedData.summary.severityDistribution['medium'] || 0;
+    const riskLevel = highSeverity > 10 ? 'HIGH' : mediumSeverity > 20 ? 'MEDIUM' : 'LOW';
+    worksheet.addRow(['Overall Risk Level', riskLevel]);
+    worksheet.addRow([]);
+
+    // Top Attack Types
+    worksheet.addRow(['Top Attack Types']);
+    worksheet.addRow(['Attack Type', 'Incidents']);
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
+
+    const attackTypes = Object.entries(processedData.summary.attacksByType)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 5);
+
+    attackTypes.forEach(([type, count]) => {
+      worksheet.addRow([type, count]);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer as any);
+  }
+
+  // Threat Intelligence Report Generator
+  private async generateThreatIntelligenceReport(format: 'pdf' | 'excel', filters: any): Promise<Buffer> {
+    const alerts = await this.wazuhService.fetchRecentAlerts({
+      severity: filters.severity,
+      ip: filters.ip,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      limit: 1000,
+    });
+
+    const processedAlerts = this.processAlertsForSOC(alerts);
+
+    if (format === 'pdf') {
+      return this.generateThreatIntelligencePdf(processedAlerts, filters);
+    } else {
+      return this.generateThreatIntelligenceExcel(processedAlerts, filters);
+    }
+  }
+
+  private async generateThreatIntelligencePdf(processedData: any, filters: any): Promise<Buffer> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        const chunks: Buffer[] = [];
+
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', err => reject(err));
+
+        // Header
+        doc.fontSize(22).text('Threat Intelligence Report', { align: 'center' });
+        doc.fontSize(12).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.moveDown();
+
+        // IOCs Detected
+        doc.fontSize(16).fillColor('#0b192c').text('Indicators of Compromise (IOCs)', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+
+        const iocs = this.extractIOCs(processedData.rawAlerts);
+        
+        if (iocs.ips.length > 0) {
+          doc.fontSize(14).text('Malicious IP Addresses:');
+          iocs.ips.slice(0, 20).forEach((ip: string) => {
+            doc.fontSize(11).text(`• ${ip}`);
+          });
+          doc.moveDown();
+        }
+
+        if (iocs.domains.length > 0) {
+          doc.fontSize(14).text('Suspicious Domains:');
+          iocs.domains.slice(0, 10).forEach((domain: string) => {
+            doc.fontSize(11).text(`• ${domain}`);
+          });
+          doc.moveDown();
+        }
+
+        // Geographic Distribution
+        doc.fontSize(16).fillColor('#0b192c').text('Geographic Distribution', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+
+        const geoData = this.extractGeoData(processedData.rawAlerts);
+        Object.entries(geoData).forEach(([country, count]) => {
+          doc.fontSize(12).text(`• ${country}: ${count} alerts`);
+        });
+
+        // Attack Patterns
+        doc.moveDown();
+        doc.fontSize(16).fillColor('#0b192c').text('Attack Patterns', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+
+        Object.entries(processedData.summary.attacksByType).forEach(([type, count]) => {
+          doc.fontSize(12).text(`• ${type}: ${count} incidents`);
+        });
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  private async generateThreatIntelligenceExcel(processedData: any, filters: any): Promise<Buffer> {
+    const workbook = new Workbook();
+    const worksheet = workbook.addWorksheet('Threat Intelligence');
+
+    // Header
+    worksheet.addRow(['Threat Intelligence Report']);
+    worksheet.addRow(['Generated', new Date().toLocaleString()]);
+    worksheet.addRow([]);
+
+    // IOCs
+    const iocs = this.extractIOCs(processedData.rawAlerts);
+    
+    worksheet.addRow(['Malicious IP Addresses']);
+    iocs.ips.forEach((ip: string) => {
+      worksheet.addRow([ip]);
+    });
+    worksheet.addRow([]);
+
+    worksheet.addRow(['Suspicious Domains']);
+    iocs.domains.forEach((domain: string) => {
+      worksheet.addRow([domain]);
+    });
+    worksheet.addRow([]);
+
+    // Geographic Data
+    worksheet.addRow(['Geographic Distribution']);
+    worksheet.addRow(['Country', 'Alert Count']);
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
+
+    const geoData = this.extractGeoData(processedData.rawAlerts);
+    Object.entries(geoData).forEach(([country, count]) => {
+      worksheet.addRow([country, count]);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer as any);
+  }
+
+  // Incident Detail Report Generator
+  private async generateIncidentDetailReport(format: 'pdf' | 'excel', filters: any): Promise<Buffer> {
+    const alerts = await this.wazuhService.fetchRecentAlerts({
+      severity: filters.severity,
+      ip: filters.ip,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      limit: 1000,
+    });
+
+    const processedAlerts = this.processAlertsForSOC(alerts);
+
+    if (format === 'pdf') {
+      return this.generateIncidentDetailPdf(processedAlerts, filters);
+    } else {
+      return this.generateIncidentDetailExcel(processedAlerts, filters);
+    }
+  }
+
+  private async generateIncidentDetailPdf(processedData: any, filters: any): Promise<Buffer> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 40, size: 'A4' });
+        const chunks: Buffer[] = [];
+
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', err => reject(err));
+
+        // Header
+        doc.fontSize(22).text('Incident Detail Report', { align: 'center' });
+        doc.fontSize(12).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.moveDown();
+
+        // Summary
+        doc.fontSize(16).fillColor('#0b192c').text('Incident Summary', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+        doc.fontSize(12).text(`Total Incidents: ${processedData.incidents.length}`);
+        doc.text(`Total Alerts: ${processedData.totalSecurity}`);
+        doc.moveDown();
+
+        // Detailed Incidents
+        doc.fontSize(16).fillColor('#0b192c').text('Incident Details', { underline: true });
+        doc.fillColor('black').moveDown(0.5);
+
+        processedData.incidents.slice(0, 20).forEach((incident: any) => {
+          doc.fontSize(12).text(`• ${incident.rule.description}`);
+          doc.fontSize(10).fillColor('gray').text(`  Severity: ${incident.rule.level}`);
+          doc.text(`  Occurrences: ${incident.count}`);
+          doc.text(`  First Seen: ${new Date(incident.firstSeen).toLocaleString()}`);
+          doc.text(`  Last Seen: ${new Date(incident.lastSeen).toLocaleString()}`);
+          if (incident.data?.src_ip) {
+            doc.text(`  Source IP: ${incident.data.src_ip}`);
+          }
+          if (incident.data?.dest_ip) {
+            doc.text(`  Destination IP: ${incident.data.dest_ip}`);
+          }
+          
+          // MITRE ATT&CK mapping (simplified)
+          const tactic = this.mapToMitreTactic(incident);
+          if (tactic) {
+            doc.text(`  MITRE ATT&CK: ${tactic}`);
+          }
+          
+          doc.fillColor('black').moveDown(0.5);
+        });
+
+        doc.end();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  private async generateIncidentDetailExcel(processedData: any, filters: any): Promise<Buffer> {
+    const workbook = new Workbook();
+    const worksheet = workbook.addWorksheet('Incident Details');
+
+    // Header
+    worksheet.addRow(['Incident Detail Report']);
+    worksheet.addRow(['Generated', new Date().toLocaleString()]);
+    worksheet.addRow([]);
+
+    // Incidents
+    worksheet.addRow(['Description', 'Severity', 'Occurrences', 'First Seen', 'Last Seen', 'Source IP', 'Destination IP', 'MITRE ATT&CK']);
+    worksheet.getRow(4).font = { bold: true };
+
+    processedData.incidents.forEach((incident: any) => {
+      worksheet.addRow([
+        incident.rule.description,
+        incident.rule.level,
+        incident.count,
+        new Date(incident.firstSeen).toLocaleString(),
+        new Date(incident.lastSeen).toLocaleString(),
+        incident.data?.src_ip || 'N/A',
+        incident.data?.dest_ip || 'N/A',
+        this.mapToMitreTactic(incident) || 'N/A'
+      ]);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer as any);
+  }
+
+  // Helper methods for threat intelligence
+  private extractIOCs(alerts: any[]) {
+    const ips = new Set<string>();
+    const domains = new Set<string>();
+
+    alerts.forEach(alert => {
+      if (alert.data?.src_ip) ips.add(alert.data.src_ip);
+      if (alert.data?.dest_ip) ips.add(alert.data.dest_ip);
+      // Domain extraction would need more sophisticated logic
+    });
+
+    return { ips: Array.from(ips), domains: Array.from(domains) };
+  }
+
+  private extractGeoData(alerts: any[]) {
+    const geoData: Record<string, number> = {};
+    
+    alerts.forEach(alert => {
+      // This would typically use a GeoIP database
+      // For now, we'll use a placeholder
+      const country = 'Unknown'; // Would be extracted from GeoIP lookup
+      geoData[country] = (geoData[country] || 0) + 1;
+    });
+
+    return geoData;
+  }
+
+  private mapToMitreTactic(incident: any): string {
+    // Simplified MITRE ATT&CK mapping based on rule groups
+    const groups = incident.rule.groups || [];
+    
+    if (groups.some(g => g.toLowerCase().includes('authentication'))) return 'Initial Access';
+    if (groups.some(g => g.toLowerCase().includes('malware'))) return 'Execution';
+    if (groups.some(g => g.toLowerCase().includes('attack'))) return 'Command and Control';
+    if (groups.some(g => g.toLowerCase().includes('ids'))) return 'Discovery';
+    if (groups.some(g => g.toLowerCase().includes('vulnerability'))) return 'Exploitation';
+    
+    return 'Unknown';
   }
 }

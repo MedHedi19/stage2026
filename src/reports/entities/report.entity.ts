@@ -21,6 +21,9 @@ export class Report {
   @Column({ type: 'text', nullable: true })
   filters: string;
 
+  @Column({ nullable: true })
+  reportType: string;
+
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'userId' })
   user: User;

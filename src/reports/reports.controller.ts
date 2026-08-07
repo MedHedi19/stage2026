@@ -8,6 +8,7 @@ import { Roles } from '../roles/roles.decorator';
 import { UserRole } from '../users/entities/user.entity';
 import { AuditAction } from '../audit/audit-action.decorator';
 import { AuditLogInterceptor } from '../audit/audit-log.interceptor';
+import { ReportType } from './report-types.enum';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -24,7 +25,7 @@ export class ReportsController {
     @Body() body: any,
     @Res() res: express.Response,
   ) {
-    const { format, severity, ip, startDate, endDate } = body;
+    const { reportType, format, severity, ip, startDate, endDate } = body;
     const filters = {
       severity: severity ? parseInt(severity, 10) : undefined,
       ip,
@@ -35,6 +36,7 @@ export class ReportsController {
     const { buffer, filename } = await this.reportsService.generateReport(
       req.user.id,
       req.user.username,
+      reportType || ReportType.INCIDENT_DETAIL,
       format || 'pdf',
       filters,
     );
@@ -50,7 +52,7 @@ export class ReportsController {
   }
 
   @Get('history')
-  @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   async getHistory() {
     return this.reportsService.getHistory();
