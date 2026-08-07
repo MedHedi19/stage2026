@@ -558,14 +558,20 @@ export class ReportsService {
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', err => reject(err));
 
+        const addSectionHeader = (title: string) => {
+          doc.moveDown();
+          doc.fontSize(16).fillColor('#0b192c').text(title, { underline: true });
+          doc.fillColor('black').moveDown(0.5);
+        };
+
         // Header
         doc.fontSize(22).text('User Activity Report', { align: 'center' });
         doc.fontSize(12).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.fillColor('black');
         doc.moveDown();
 
         // Summary
-        doc.fontSize(16).fillColor('#0b192c').text('Summary', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Summary');
         doc.fontSize(12).text(`Total Activities: ${auditLogs.length}`);
         
         // Activity by user
@@ -575,18 +581,124 @@ export class ReportsService {
           userActivities[username] = (userActivities[username] || 0) + 1;
         });
 
-        doc.moveDown();
-        doc.fontSize(16).fillColor('#0b192c').text('Activities by User', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        // User Activity Chart
+        addSectionHeader('Activities by User');
+        
+        const userChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const userChartBuffer = await userChartCanvas.renderToBuffer({
+            type: 'bar',
+            data: {
+                labels: Object.keys(userActivities),
+                datasets: [{
+                    label: 'Activities',
+                    data: Object.values(userActivities),
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    title: { display: false },
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        } as any);
 
-        Object.entries(userActivities).forEach(([username, count]) => {
-          doc.fontSize(12).text(`• ${username}: ${count} activities`);
+        doc.image(userChartBuffer, { width: 450 });
+        doc.moveDown();
+
+        // Activity over time
+        const activityOverTime: Record<string, number> = {};
+        auditLogs.forEach(log => {
+          const dateStr = new Date(log.timestamp).toLocaleDateString();
+          activityOverTime[dateStr] = (activityOverTime[dateStr] || 0) + 1;
         });
 
-        // Recent activities
+        const timeLabels = Object.keys(activityOverTime).sort();
+        const timeData = timeLabels.map(date => activityOverTime[date]);
+
+        addSectionHeader('Activity Over Time');
+        
+        const timeChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const timeChartBuffer = await timeChartCanvas.renderToBuffer({
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Activities',
+                    data: timeData,
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1,
+                    fill: true
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        } as any);
+
+        doc.image(timeChartBuffer, { width: 450 });
         doc.moveDown();
-        doc.fontSize(16).fillColor('#0b192c').text('Recent Activities', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+
+        // Activity by action type
+        const actionTypes: Record<string, number> = {};
+        auditLogs.forEach(log => {
+          const action = log.action || 'Unknown';
+          actionTypes[action] = (actionTypes[action] || 0) + 1;
+        });
+
+        addSectionHeader('Activities by Action Type');
+        
+        const actionChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const actionChartBuffer = await actionChartCanvas.renderToBuffer({
+            type: 'pie',
+            data: {
+                labels: Object.keys(actionTypes),
+                datasets: [{
+                    label: 'Actions',
+                    data: Object.values(actionTypes),
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.7)',
+                        'rgba(54, 162, 235, 0.7)',
+                        'rgba(255, 206, 86, 0.7)',
+                        'rgba(75, 192, 192, 0.7)',
+                        'rgba(153, 102, 255, 0.7)',
+                        'rgba(255, 159, 64, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    title: { display: false },
+                    legend: { display: true, position: 'right' }
+                }
+            }
+        } as any);
+
+        doc.image(actionChartBuffer, { width: 450 });
+        doc.moveDown();
+
+        // Recent activities
+        addSectionHeader('Recent Activities');
 
         auditLogs.slice(0, 50).forEach((log: any) => {
           doc.fontSize(10).text(`${new Date(log.timestamp).toLocaleString()} - ${log.username || 'Unknown'}: ${log.action}`);
@@ -616,9 +728,46 @@ export class ReportsService {
     worksheet.addRow(['Total Activities', auditLogs.length]);
     worksheet.addRow([]);
 
+    // Activity by User Data
+    const userActivities: Record<string, number> = {};
+    auditLogs.forEach(log => {
+      const username = log.username || 'Unknown';
+      userActivities[username] = (userActivities[username] || 0) + 1;
+    });
+
+    worksheet.addRow(['Activities by User']);
+    worksheet.addRow(['Username', 'Activity Count']);
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
+
+    const userData = Object.entries(userActivities);
+    userData.forEach(([username, count]) => {
+      worksheet.addRow([username, count]);
+    });
+
+    worksheet.addRow([]);
+
+    // Activity by Action Type Data
+    const actionTypes: Record<string, number> = {};
+    auditLogs.forEach(log => {
+      const action = log.action || 'Unknown';
+      actionTypes[action] = (actionTypes[action] || 0) + 1;
+    });
+
+    worksheet.addRow(['Activities by Action Type']);
+    worksheet.addRow(['Action Type', 'Count']);
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
+
+    const actionData = Object.entries(actionTypes);
+    actionData.forEach(([action, count]) => {
+      worksheet.addRow([action, count]);
+    });
+
+    worksheet.addRow([]);
+
     // Activities
+    worksheet.addRow(['Activity Details']);
     worksheet.addRow(['Timestamp', 'Username', 'Action', 'Target Entity', 'IP Address']);
-    worksheet.getRow(5).font = { bold: true };
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
 
     auditLogs.forEach((log: any) => {
       worksheet.addRow([
@@ -663,14 +812,20 @@ export class ReportsService {
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', err => reject(err));
 
+        const addSectionHeader = (title: string) => {
+          doc.moveDown();
+          doc.fontSize(16).fillColor('#0b192c').text(title, { underline: true });
+          doc.fillColor('black').moveDown(0.5);
+        };
+
         // Header
         doc.fontSize(22).text('Executive Summary Report', { align: 'center' });
         doc.fontSize(12).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.fillColor('black');
         doc.moveDown();
 
         // Key Metrics
-        doc.fontSize(16).fillColor('#0b192c').text('Key Security Metrics', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Key Security Metrics');
         
         doc.fontSize(12).text(`Total Security Events: ${processedData.totalSecurity}`);
         doc.text(`Total Raw Events: ${processedData.totalRaw}`);
@@ -679,8 +834,7 @@ export class ReportsService {
         doc.moveDown();
 
         // Risk Assessment
-        doc.fontSize(16).fillColor('#0b192c').text('Risk Assessment', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Risk Assessment');
         
         const highSeverity = processedData.summary.severityDistribution['high'] || 0;
         const mediumSeverity = processedData.summary.severityDistribution['medium'] || 0;
@@ -690,9 +844,65 @@ export class ReportsService {
         doc.fontSize(14).fillColor(riskColor).text(`Overall Risk Level: ${riskLevel}`);
         doc.fillColor('black').moveDown();
 
+        // Attack Types Chart
+        addSectionHeader('Attack Distribution');
+        
+        const typeChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const typeChartBuffer = await typeChartCanvas.renderToBuffer({
+            type: 'bar',
+            data: {
+                labels: Object.keys(processedData.summary.attacksByType),
+                datasets: [{
+                    label: 'Attacks',
+                    data: Object.values(processedData.summary.attacksByType),
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    title: { display: false },
+                    legend: { display: false }
+                }
+            }
+        } as any);
+
+        doc.image(typeChartBuffer, { width: 450 });
+        doc.moveDown();
+
+        // Alerts Over Time Chart
+        addSectionHeader('Security Events Trend');
+        
+        const timeChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const timeChartBuffer = await timeChartCanvas.renderToBuffer({
+            type: 'line',
+            data: {
+                labels: processedData.summary.alertsOverTime.map((a: any) => new Date(a.time).toLocaleString()),
+                datasets: [{
+                    label: 'Alert Count',
+                    data: processedData.summary.alertsOverTime.map((a: any) => a.count),
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1,
+                    fill: true
+                }]
+            },
+            options: {
+                scales: {
+                    y: { beginAtZero: true }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        } as any);
+
+        doc.image(timeChartBuffer, { width: 450 });
+        doc.font('Helvetica').moveDown();
+
         // Top Attack Types
-        doc.fontSize(16).fillColor('#0b192c').text('Top Attack Types', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Top Attack Types');
 
         const attackTypes = Object.entries(processedData.summary.attacksByType)
           .sort((a, b) => (b[1] as number) - (a[1] as number))
@@ -734,16 +944,26 @@ export class ReportsService {
     worksheet.addRow(['Overall Risk Level', riskLevel]);
     worksheet.addRow([]);
 
-    // Top Attack Types
-    worksheet.addRow(['Top Attack Types']);
+    // Attack Types Data
+    worksheet.addRow(['Attack Types Data']);
     worksheet.addRow(['Attack Type', 'Incidents']);
     worksheet.getRow(worksheet.rowCount).font = { bold: true };
 
     const attackTypes = Object.entries(processedData.summary.attacksByType)
-      .sort((a, b) => (b[1] as number) - (a[1] as number))
-      .slice(0, 5);
+      .sort((a, b) => (b[1] as number) - (a[1] as number));
 
     attackTypes.forEach(([type, count]) => {
+      worksheet.addRow([type, count]);
+    });
+
+    worksheet.addRow([]);
+
+    // Top Attack Types
+    worksheet.addRow(['Top Attack Types Summary']);
+    worksheet.addRow(['Attack Type', 'Incidents']);
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
+
+    attackTypes.slice(0, 5).forEach(([type, count]) => {
       worksheet.addRow([type, count]);
     });
 
@@ -780,14 +1000,61 @@ export class ReportsService {
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', err => reject(err));
 
+        const addSectionHeader = (title: string) => {
+          doc.moveDown();
+          doc.fontSize(16).fillColor('#0b192c').text(title, { underline: true });
+          doc.fillColor('black').moveDown(0.5);
+        };
+
         // Header
         doc.fontSize(22).text('Threat Intelligence Report', { align: 'center' });
         doc.fontSize(12).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.fillColor('black');
+        doc.moveDown();
+
+        // Attack Patterns Chart
+        addSectionHeader('Attack Patterns Distribution');
+        
+        const attackChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const attackChartBuffer = await attackChartCanvas.renderToBuffer({
+            type: 'pie',
+            data: {
+                labels: Object.keys(processedData.summary.attacksByType),
+                datasets: [{
+                    label: 'Attacks',
+                    data: Object.values(processedData.summary.attacksByType),
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.7)',
+                        'rgba(54, 162, 235, 0.7)',
+                        'rgba(255, 206, 86, 0.7)',
+                        'rgba(75, 192, 192, 0.7)',
+                        'rgba(153, 102, 255, 0.7)',
+                        'rgba(255, 159, 64, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    title: { display: false },
+                    legend: { display: true, position: 'right' }
+                }
+            }
+        } as any);
+
+        doc.image(attackChartBuffer, { width: 450 });
         doc.moveDown();
 
         // IOCs Detected
-        doc.fontSize(16).fillColor('#0b192c').text('Indicators of Compromise (IOCs)', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Indicators of Compromise (IOCs)');
 
         const iocs = this.extractIOCs(processedData.rawAlerts);
         
@@ -808,18 +1075,16 @@ export class ReportsService {
         }
 
         // Geographic Distribution
-        doc.fontSize(16).fillColor('#0b192c').text('Geographic Distribution', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Geographic Distribution');
 
         const geoData = this.extractGeoData(processedData.rawAlerts);
         Object.entries(geoData).forEach(([country, count]) => {
           doc.fontSize(12).text(`• ${country}: ${count} alerts`);
         });
 
-        // Attack Patterns
+        // Attack Patterns List
         doc.moveDown();
-        doc.fontSize(16).fillColor('#0b192c').text('Attack Patterns', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Attack Patterns Details');
 
         Object.entries(processedData.summary.attacksByType).forEach(([type, count]) => {
           doc.fontSize(12).text(`• ${type}: ${count} incidents`);
@@ -839,6 +1104,20 @@ export class ReportsService {
     // Header
     worksheet.addRow(['Threat Intelligence Report']);
     worksheet.addRow(['Generated', new Date().toLocaleString()]);
+    worksheet.addRow([]);
+
+    // Attack Patterns Data
+    worksheet.addRow(['Attack Patterns Data']);
+    worksheet.addRow(['Attack Type', 'Incidents']);
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
+
+    const attackTypes = Object.entries(processedData.summary.attacksByType)
+      .sort((a, b) => (b[1] as number) - (a[1] as number));
+
+    attackTypes.forEach(([type, count]) => {
+      worksheet.addRow([type, count]);
+    });
+
     worksheet.addRow([]);
 
     // IOCs
@@ -899,21 +1178,120 @@ export class ReportsService {
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', err => reject(err));
 
+        const addSectionHeader = (title: string) => {
+          doc.moveDown();
+          doc.fontSize(16).fillColor('#0b192c').text(title, { underline: true });
+          doc.fillColor('black').moveDown(0.5);
+        };
+
         // Header
         doc.fontSize(22).text('Incident Detail Report', { align: 'center' });
         doc.fontSize(12).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc.fillColor('black');
         doc.moveDown();
 
         // Summary
-        doc.fontSize(16).fillColor('#0b192c').text('Incident Summary', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Incident Summary');
         doc.fontSize(12).text(`Total Incidents: ${processedData.incidents.length}`);
         doc.text(`Total Alerts: ${processedData.totalSecurity}`);
         doc.moveDown();
 
+        // Severity Distribution Chart
+        addSectionHeader('Severity Distribution');
+        
+        const severityLabels = Object.keys(processedData.summary.severityDistribution);
+        const severityData = Object.values(processedData.summary.severityDistribution);
+        
+        const severityChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+        const severityChartBuffer = await severityChartCanvas.renderToBuffer({
+            type: 'bar',
+            data: {
+                labels: severityLabels,
+                datasets: [{
+                    label: 'Incidents by Severity',
+                    data: severityData,
+                    backgroundColor: severityLabels.map((level: string) => {
+                        const lvl = parseInt(level);
+                        if (lvl >= 10) return 'rgba(255, 99, 132, 0.7)';
+                        if (lvl >= 7) return 'rgba(255, 159, 64, 0.7)';
+                        if (lvl >= 5) return 'rgba(255, 206, 86, 0.7)';
+                        return 'rgba(75, 192, 192, 0.7)';
+                    }),
+                    borderColor: severityLabels.map((level: string) => {
+                        const lvl = parseInt(level);
+                        if (lvl >= 10) return 'rgba(255, 99, 132, 1)';
+                        if (lvl >= 7) return 'rgba(255, 159, 64, 1)';
+                        if (lvl >= 5) return 'rgba(255, 206, 86, 1)';
+                        return 'rgba(75, 192, 192, 1)';
+                    }),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    title: { display: false },
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        } as any);
+
+        doc.image(severityChartBuffer, { width: 450 });
+        doc.moveDown();
+
+        // MITRE ATT&CK Distribution
+        addSectionHeader('MITRE ATT&CK Tactics');
+        
+        const mitreTactics: Record<string, number> = {};
+        processedData.incidents.forEach((incident: any) => {
+          const tactic = this.mapToMitreTactic(incident);
+          if (tactic && tactic !== 'Unknown') {
+            mitreTactics[tactic] = (mitreTactics[tactic] || 0) + 1;
+          }
+        });
+
+        if (Object.keys(mitreTactics).length > 0) {
+          const mitreChartCanvas = new ChartJSNodeCanvas({ width: 500, height: 250, backgroundColour: 'white' });
+          const mitreChartBuffer = await mitreChartCanvas.renderToBuffer({
+              type: 'doughnut',
+              data: {
+                  labels: Object.keys(mitreTactics),
+                  datasets: [{
+                      label: 'MITRE Tactics',
+                      data: Object.values(mitreTactics),
+                      backgroundColor: [
+                          'rgba(255, 99, 132, 0.7)',
+                          'rgba(54, 162, 235, 0.7)',
+                          'rgba(255, 206, 86, 0.7)',
+                          'rgba(75, 192, 192, 0.7)',
+                          'rgba(153, 102, 255, 0.7)'
+                      ],
+                      borderColor: [
+                          'rgba(255, 99, 132, 1)',
+                          'rgba(54, 162, 235, 1)',
+                          'rgba(255, 206, 86, 1)',
+                          'rgba(75, 192, 192, 1)',
+                          'rgba(153, 102, 255, 1)'
+                      ],
+                      borderWidth: 1
+                  }]
+              },
+              options: {
+                  plugins: {
+                      title: { display: false },
+                      legend: { display: true, position: 'right' }
+                  }
+              }
+          } as any);
+
+          doc.image(mitreChartBuffer, { width: 450 });
+          doc.moveDown();
+        }
+
         // Detailed Incidents
-        doc.fontSize(16).fillColor('#0b192c').text('Incident Details', { underline: true });
-        doc.fillColor('black').moveDown(0.5);
+        addSectionHeader('Incident Details');
 
         processedData.incidents.slice(0, 20).forEach((incident: any) => {
           doc.fontSize(12).text(`• ${incident.rule.description}`);
@@ -953,9 +1331,44 @@ export class ReportsService {
     worksheet.addRow(['Generated', new Date().toLocaleString()]);
     worksheet.addRow([]);
 
+    // Severity Distribution Data
+    worksheet.addRow(['Severity Distribution']);
+    worksheet.addRow(['Severity Level', 'Count']);
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
+
+    const severityData = Object.entries(processedData.summary.severityDistribution);
+    severityData.forEach(([level, count]) => {
+      worksheet.addRow([level, count]);
+    });
+
+    worksheet.addRow([]);
+
+    // MITRE ATT&CK Tactics Data
+    const mitreTactics: Record<string, number> = {};
+    processedData.incidents.forEach((incident: any) => {
+      const tactic = this.mapToMitreTactic(incident);
+      if (tactic && tactic !== 'Unknown') {
+        mitreTactics[tactic] = (mitreTactics[tactic] || 0) + 1;
+      }
+    });
+
+    if (Object.keys(mitreTactics).length > 0) {
+      worksheet.addRow(['MITRE ATT&CK Tactics']);
+      worksheet.addRow(['Tactic', 'Count']);
+      worksheet.getRow(worksheet.rowCount).font = { bold: true };
+
+      const mitreData = Object.entries(mitreTactics);
+      mitreData.forEach(([tactic, count]) => {
+        worksheet.addRow([tactic, count]);
+      });
+
+      worksheet.addRow([]);
+    }
+
     // Incidents
+    worksheet.addRow(['Incident Details']);
     worksheet.addRow(['Description', 'Severity', 'Occurrences', 'First Seen', 'Last Seen', 'Source IP', 'Destination IP', 'MITRE ATT&CK']);
-    worksheet.getRow(4).font = { bold: true };
+    worksheet.getRow(worksheet.rowCount).font = { bold: true };
 
     processedData.incidents.forEach((incident: any) => {
       worksheet.addRow([
