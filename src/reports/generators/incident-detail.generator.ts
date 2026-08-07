@@ -9,6 +9,31 @@ import {
   consolidateCategories,
 } from '../../common/alert-classifier';
 
+interface Incident {
+  id: number;
+  key: string;
+  description: string;
+  ruleLevel: number;
+  maxSeverity: number;
+  firstSeen: string;
+  lastSeen: string;
+  alertCount: number;
+  sourceIPs: Set<string>;
+  destIPs: Set<string>;
+  affectedSystems: Set<string>;
+  mitreTechniques: string[];
+  category: string;
+  status: string;
+  actions: string[];
+  alerts: any[];
+}
+
+interface ProcessedIncident extends Omit<Incident, 'sourceIPs' | 'destIPs' | 'affectedSystems'> {
+  sourceIPs: string[];
+  destIPs: string[];
+  affectedSystems: string[];
+}
+
 @Injectable()
 export class IncidentDetailGenerator implements ReportGenerator {
   constructor(
@@ -111,15 +136,15 @@ export class IncidentDetailGenerator implements ReportGenerator {
   }
 
   private groupIntoIncidents(alerts: any[]) {
-    const incidents = [];
-    const incidentMap = new Map();
+    const incidents: Incident[] = [];
+    const incidentMap = new Map<string, number>();
 
     alerts.forEach(alert => {
       // Group by similar characteristics
       const key = this.generateIncidentKey(alert);
       
       if (!incidentMap.has(key)) {
-        const incident = {
+        const incident: Incident = {
           id: incidents.length + 1,
           key,
           description: alert.rule.description,
@@ -128,10 +153,10 @@ export class IncidentDetailGenerator implements ReportGenerator {
           firstSeen: alert.timestamp,
           lastSeen: alert.timestamp,
           alertCount: 1,
-          sourceIPs: new Set(),
-          destIPs: new Set(),
-          affectedSystems: new Set(),
-          mitreTechniques: [],
+          sourceIPs: new Set<string>(),
+          destIPs: new Set<string>(),
+          affectedSystems: new Set<string>(),
+          mitreTechniques: [] as string[],
           category: classifyAlertCategory(alert),
           status: this.determineIncidentStatus(alert),
           actions: this.extractActions(alert),
@@ -147,7 +172,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
         incidents.push(incident);
         incidentMap.set(key, incidents.length - 1);
       } else {
-        const incident = incidents[incidentMap.get(key)];
+        const incident = incidents[incidentMap.get(key) as number];
         incident.alertCount++;
         incident.maxSeverity = Math.max(incident.maxSeverity, alert.rule.level);
         
@@ -174,7 +199,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
     });
 
     // Convert Sets to Arrays for JSON serialization
-    return incidents.map(incident => ({
+    return incidents.map((incident): ProcessedIncident => ({
       ...incident,
       sourceIPs: Array.from(incident.sourceIPs),
       destIPs: Array.from(incident.destIPs),
@@ -201,7 +226,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
   }
 
   private extractActions(alert: any): string[] {
-    const actions = [];
+    const actions: string[] = [];
     
     if (alert.rule.description) {
       if (alert.rule.description.toLowerCase().includes('block')) {
@@ -220,12 +245,12 @@ export class IncidentDetailGenerator implements ReportGenerator {
   }
 
   private mapAlertToMitre(alert: any): string[] {
-    const techniques = [];
+    const techniques: string[] = [];
     const description = (alert.rule.description || '').toLowerCase();
     const groups = alert.rule.groups || [];
 
     // MITRE ATT&CK technique mapping based on alert patterns
-    const mitreMapping = {
+    const mitreMapping: Record<string, string[]> = {
       'brute force': ['T1110 - Brute Force'],
       'ssh': ['T1021.004 - Remote Services: SSH'],
       'web attack': ['T1190 - Exploit Public-Facing Application'],
@@ -273,8 +298,8 @@ export class IncidentDetailGenerator implements ReportGenerator {
     return [...new Set(techniques)]; // Remove duplicates
   }
 
-  private mapToMitreAttck(incidents: any[]) {
-    const tactics = {
+  private mapToMitreAttck(incidents: ProcessedIncident[]) {
+    const tactics: Record<string, string[]> = {
       'Initial Access': [],
       'Execution': [],
       'Persistence': [],
@@ -327,7 +352,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
     return tacticMapping[techniqueId] || 'Discovery';
   }
 
-  private analyzeResponseTimes(incidents: any[]) {
+  private analyzeResponseTimes(incidents: ProcessedIncident[]) {
     const responseTimes = incidents.map(incident => {
       const firstSeen = new Date(incident.firstSeen);
       const lastSeen = new Date(incident.lastSeen);
@@ -354,7 +379,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
     };
   }
 
-  private analyzeIncidentLifecycle(incidents: any[]) {
+  private analyzeIncidentLifecycle(incidents: ProcessedIncident[]) {
     const lifecycle = {
       detection: incidents.filter(i => i.status === 'Critical' || i.status === 'High').length,
       analysis: incidents.filter(i => i.status === 'Medium').length,
@@ -367,7 +392,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
     return lifecycle;
   }
 
-  private analyzeAffectedAssets(incidents: any[]) {
+  private analyzeAffectedAssets(incidents: ProcessedIncident[]) {
     const assetCounts: Record<string, number> = {};
     
     incidents.forEach(incident => {
@@ -403,7 +428,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
         doc.fontSize(16).fillColor('#0b192c').text('Incident Summary', { underline: true });
         doc.moveDown();
 
-        const summaryData = [
+        const summaryData: string[][] = [
           ['Total Incidents', data.summary.totalIncidents.toString()],
           ['Critical Incidents', data.summary.criticalIncidents.toString()],
           ['High Severity', data.summary.highIncidents.toString()],
@@ -527,13 +552,13 @@ export class IncidentDetailGenerator implements ReportGenerator {
     // Styling
     const headerStyle = {
       font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' }
+      fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF0B192C' } },
+      alignment: { horizontal: 'center' as const }
     };
 
     const titleStyle = {
       font: { bold: true, size: 16, color: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' }
+      alignment: { horizontal: 'center' as const }
     };
 
     // Title
@@ -543,16 +568,16 @@ export class IncidentDetailGenerator implements ReportGenerator {
 
     worksheet.mergeCells('A2:F2');
     worksheet.getCell('A2').value = `Report Period: ${data.summary.period}`;
-    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' } };
+    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' as const } };
 
     // Incident Summary
     let row = 4;
     worksheet.getCell(`A${row}`).value = 'Incident Summary';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
-    const summaryData = [
+    const summaryData: (string | number)[][] = [
       ['Metric', 'Value', 'Status', 'Trend', 'Notes'],
       ['Total Incidents', data.summary.totalIncidents, 'Active', '↑ 5%', 'Within normal range'],
       ['Critical Incidents', data.summary.criticalIncidents, 'Immediate Action', '→', 'Requires attention'],
@@ -567,7 +592,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
         const cell = worksheet.getCell(row, col + 1);
         cell.value = value;
         if (index === 0) {
-          cell.style = headerStyle;
+          cell.style = headerStyle as any;
         }
       });
       row++;
@@ -576,7 +601,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
     // MITRE ATT&CK Tactics
     row += 2;
     worksheet.getCell(`A${row}`).value = 'MITRE ATT&CK Tactics Coverage';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -597,7 +622,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
     // Response Time Analysis
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Response Time Analysis';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:B${row}`);
     row++;
 
@@ -620,7 +645,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
     // Incident Lifecycle
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Incident Lifecycle Analysis';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:B${row}`);
     row++;
 
@@ -630,14 +655,14 @@ export class IncidentDetailGenerator implements ReportGenerator {
 
     Object.entries(data.lifecycleAnalysis).forEach(([phase, count]) => {
       worksheet.getCell(`A${row}`).value = phase.charAt(0).toUpperCase() + phase.slice(1);
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       row++;
     });
 
     // Top Affected Assets
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Top Affected Assets';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:D${row}`);
     row++;
 
@@ -652,7 +677,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
       const recommendation = count > 10 ? 'Immediate remediation' : count > 5 ? 'Prioritize patching' : 'Monitor';
       
       worksheet.getCell(`A${row}`).value = asset;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = riskLevel;
       worksheet.getCell(`D${row}`).value = recommendation;
       row++;
@@ -669,7 +694,7 @@ export class IncidentDetailGenerator implements ReportGenerator {
     incidentHeaders.forEach((header, col) => {
       const cell = incidentSheet.getCell(incidentRow, col + 1);
       cell.value = header;
-      cell.style = headerStyle;
+      cell.style = headerStyle as any;
     });
     incidentRow++;
 

@@ -265,7 +265,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
       const description = (alert.rule.description || '').toLowerCase();
       const groups = alert.rule.groups || [];
 
-      let detectedFamily = null;
+      let detectedFamily: string | null = null;
 
       // Check for known malware families
       malwareIndicators.forEach(indicator => {
@@ -662,13 +662,13 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // Styling
     const headerStyle = {
       font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' }
+      fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF0B192C' } },
+      alignment: { horizontal: 'center' as const }
     };
 
     const titleStyle = {
       font: { bold: true, size: 16, color: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' }
+      alignment: { horizontal: 'center' as const }
     };
 
     // Title
@@ -678,12 +678,12 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
 
     worksheet.mergeCells('A2:F2');
     worksheet.getCell('A2').value = `Report Period: ${data.summary.period}`;
-    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' } };
+    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' as const } };
 
     // Summary
     let row = 4;
     worksheet.getCell(`A${row}`).value = 'Threat Landscape Summary';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
@@ -701,7 +701,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
         const cell = worksheet.getCell(row, col + 1);
         cell.value = value;
         if (index === 0) {
-          cell.style = headerStyle;
+          cell.style = headerStyle as any;
         }
       });
       row++;
@@ -710,7 +710,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // IOCs
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Indicators of Compromise';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
@@ -737,7 +737,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // High-Risk IPs
     row += 2;
     worksheet.getCell(`A${row}`).value = 'High-Risk IP Addresses';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:E${row}`);
     row++;
 
@@ -750,7 +750,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
 
     data.iocs.highRiskIPs.slice(0, 20).forEach(({ ip, count, severity, risk }) => {
       worksheet.getCell(`A${row}`).value = ip;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = severity;
       worksheet.getCell(`D${row}`).value = risk;
       worksheet.getCell(`E${row}`).value = 'Block/Investigate';
@@ -760,7 +760,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // Geolocation
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Geographic Distribution';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:D${row}`);
     row++;
 
@@ -775,7 +775,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
       const status = threatLevel === 'Critical' ? 'Enhanced' : threatLevel === 'High' ? 'Active' : 'Standard';
       
       worksheet.getCell(`A${row}`).value = country;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = threatLevel;
       worksheet.getCell(`D${row}`).value = status;
       row++;
@@ -784,7 +784,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // Malware Families
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Malware Families';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:D${row}`);
     row++;
 
@@ -798,7 +798,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
       const prevalence = count > 20 ? 'High' : count > 10 ? 'Medium' : 'Low';
       
       worksheet.getCell(`A${row}`).value = family.toUpperCase();
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = severity;
       worksheet.getCell(`D${row}`).value = prevalence;
       row++;
@@ -807,7 +807,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // Threat Actors
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Threat Actor Attribution';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:E${row}`);
     row++;
 
@@ -821,7 +821,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     if (data.threatActorAnalysis.topActors.length > 0) {
       data.threatActorAnalysis.topActors.forEach(({ actor, count, confidence, techniques }) => {
         worksheet.getCell(`A${row}`).value = actor;
-        worksheet.getCell(`B${row}`).value = count;
+        worksheet.getCell(`B${row}`).value = count as any;
         worksheet.getCell(`C${row}`).value = confidence;
         worksheet.getCell(`D${row}`).value = techniques.join(', ');
         worksheet.getCell(`E${row}`).value = 'Enhanced Monitoring';
@@ -836,7 +836,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // Attack Patterns
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Attack Patterns';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:D${row}`);
     row++;
 
@@ -850,7 +850,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
       const priority = severity >= 8 ? 'Critical' : severity >= 5 ? 'High' : 'Medium';
       
       worksheet.getCell(`A${row}`).value = pattern;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = severity;
       worksheet.getCell(`D${row}`).value = priority;
       row++;
@@ -859,7 +859,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // Active Campaigns
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Active Campaigns';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:E${row}`);
     row++;
 
@@ -882,7 +882,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
     // Emerging Threats
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Emerging Threats (7 Days)';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -893,7 +893,7 @@ export class ThreatIntelligenceGenerator implements ReportGenerator {
 
     data.emergingThreats.emergingThreats.forEach(({ threat, count, trend }) => {
       worksheet.getCell(`A${row}`).value = threat;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = trend;
       row++;
     });

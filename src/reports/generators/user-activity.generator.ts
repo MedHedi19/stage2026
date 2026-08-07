@@ -271,7 +271,7 @@ export class UserActivityGenerator implements ReportGenerator {
 
         Object.entries(data.complianceMetrics).forEach(([metric, value]) => {
           doc.fontSize(11).fillColor('#64748b').text(`${metric}:`, 50, doc.y);
-          doc.fillColor('#0b192c').text(value, 200, doc.y);
+          doc.fillColor('#0b192c').text(value as string, 200, doc.y);
           doc.moveDown(0.5);
         });
 
@@ -313,7 +313,7 @@ export class UserActivityGenerator implements ReportGenerator {
         Object.entries(data.securityEvents).forEach(([event, count]) => {
           if (count > 0) {
             doc.fontSize(11).fillColor('#0b192c').text(event);
-            doc.fontSize(10).fillColor('#64748b').text(`Count: ${count}`);
+            doc.fontSize(10).fillColor('#64748b').text(`Count: ${count as number}`);
             doc.moveDown(0.5);
           }
         });
@@ -394,10 +394,10 @@ export class UserActivityGenerator implements ReportGenerator {
 
         topActions.forEach(([action, count]) => {
           const percentage = data.summary.totalActions > 0 
-            ? ((count / data.summary.totalActions) * 100).toFixed(1)
+            ? ((count as number / data.summary.totalActions) * 100).toFixed(1)
             : '0.0';
           
-          doc.fontSize(10).fillColor('black').text(`${action}: ${count} (${percentage}%)`);
+          doc.fontSize(10).fillColor('black').text(`${action}: ${count as number} (${percentage}%)`);
           doc.moveDown(0.3);
         });
 
@@ -426,14 +426,15 @@ export class UserActivityGenerator implements ReportGenerator {
   }
 
   private generateRecommendations(data: any): string[] {
-    const recommendations = [];
+    const recommendations: string[] = [];
 
     if (data.anomalousUsers.length > 0) {
       recommendations.push(`Investigate ${data.anomalousUsers.length} user(s) with anomalous activity patterns exceeding normal thresholds.`);
     }
 
-    if (data.securityEvents['Failed Login Attempts'] > 10) {
-      recommendations.push(`Review ${data.securityEvents['Failed Login Attempts']} failed login attempts - potential brute force attack detected.`);
+    if ((data.securityEvents['Failed Login Attempts'] as number) > 10) {
+      const failedAttempts = data.securityEvents['Failed Login Attempts'] as number;
+      recommendations.push(`Review ${failedAttempts} failed login attempts - potential brute force attack detected.`);
     }
 
     if (data.complianceMetrics.ipLoggingRate !== '100%') {
@@ -458,13 +459,13 @@ export class UserActivityGenerator implements ReportGenerator {
     // Styling
     const headerStyle = {
       font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' }
+      fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF0B192C' } },
+      alignment: { horizontal: 'center' as const }
     };
 
     const titleStyle = {
       font: { bold: true, size: 16, color: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' }
+      alignment: { horizontal: 'center' as const }
     };
 
     // Title
@@ -474,12 +475,12 @@ export class UserActivityGenerator implements ReportGenerator {
 
     worksheet.mergeCells('A2:F2');
     worksheet.getCell('A2').value = `Report Period: ${data.summary.period}`;
-    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' } };
+    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' as const } };
 
     // Summary
     let row = 4;
     worksheet.getCell(`A${row}`).value = 'Activity Summary';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
@@ -497,7 +498,7 @@ export class UserActivityGenerator implements ReportGenerator {
         const cell = worksheet.getCell(row, col + 1);
         cell.value = value;
         if (index === 0) {
-          cell.style = headerStyle;
+          cell.style = headerStyle as any;
         }
       });
       row++;
@@ -506,7 +507,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Compliance Metrics
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Compliance Metrics';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
@@ -527,7 +528,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Top Users
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Most Active Users';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
@@ -554,7 +555,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Security Events
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Security Events';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -567,7 +568,7 @@ export class UserActivityGenerator implements ReportGenerator {
       const riskLevel = count > 10 ? 'High' : count > 5 ? 'Medium' : count > 0 ? 'Low' : 'None';
       
       worksheet.getCell(`A${row}`).value = event;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = riskLevel;
       row++;
     });
@@ -575,7 +576,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Activity Patterns
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Activity Patterns';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -597,7 +598,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // IP Address Analysis
     row += 2;
     worksheet.getCell(`A${row}`).value = 'IP Address Analysis';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:E${row}`);
     row++;
 
@@ -613,7 +614,7 @@ export class UserActivityGenerator implements ReportGenerator {
       const action = riskLevel === 'High' ? 'Investigate' : riskLevel === 'Medium' ? 'Monitor' : 'Normal';
       
       worksheet.getCell(`A${row}`).value = ip;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = uniqueUsers;
       worksheet.getCell(`D${row}`).value = riskLevel;
       worksheet.getCell(`E${row}`).value = action;
@@ -623,7 +624,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Action Distribution
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Action Type Distribution';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -642,7 +643,7 @@ export class UserActivityGenerator implements ReportGenerator {
         : '0.0';
       
       worksheet.getCell(`A${row}`).value = action;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = `${percentage}%`;
       row++;
     });
@@ -651,7 +652,7 @@ export class UserActivityGenerator implements ReportGenerator {
     if (data.anomalousUsers.length > 0) {
       row += 2;
       worksheet.getCell(`A${row}`).value = 'Anomalous Activity Detection';
-      worksheet.getCell(`A${row}`).style = headerStyle;
+      worksheet.getCell(`A${row}`).style = headerStyle as any;
       worksheet.mergeCells(`A${row}:D${row}`);
       row++;
 
@@ -675,7 +676,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Recommendations
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Audit Trail Recommendations';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 

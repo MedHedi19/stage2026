@@ -344,7 +344,7 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
   }
 
   private generateRecommendations(data: any): string[] {
-    const recommendations = [];
+    const recommendations: string[] = [];
     
     if (data.summary.riskScore > 70) {
       recommendations.push('IMMEDIATE ACTION REQUIRED: Risk score exceeds 70%. Review critical alerts and implement additional security controls.');
@@ -376,13 +376,13 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
     // Styling
     const headerStyle = {
       font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' }
+      fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF0B192C' } },
+      alignment: { horizontal: 'center' as const }
     };
 
     const titleStyle = {
       font: { bold: true, size: 16, color: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' }
+      alignment: { horizontal: 'center' as const }
     };
 
     // Title
@@ -392,16 +392,16 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
 
     worksheet.mergeCells('A2:E2');
     worksheet.getCell('A2').value = `Report Period: ${data.summary.period}`;
-    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' } };
+    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' as const } };
 
     worksheet.mergeCells('A3:E3');
     worksheet.getCell('A3').value = `Generated: ${new Date().toLocaleString()}`;
-    worksheet.getCell('A3').style = { font: { size: 10 }, alignment: { horizontal: 'center' } };
+    worksheet.getCell('A3').style = { font: { size: 10 }, alignment: { horizontal: 'center' as const } };
 
     // Key Metrics
     let row = 5;
     worksheet.getCell(`A${row}`).value = 'Key Performance Indicators';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:E${row}`);
     row++;
 
@@ -417,9 +417,9 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
     metrics.forEach((metric, index) => {
       metric.forEach((value, col) => {
         const cell = worksheet.getCell(row, col + 1);
-        cell.value = value;
+        cell.value = value as any;
         if (index === 0) {
-          cell.style = headerStyle;
+          cell.style = headerStyle as any;
         }
       });
       row++;
@@ -428,7 +428,7 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
     // Severity Distribution
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Severity Distribution';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -443,7 +443,7 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
         : '0.0';
       
       worksheet.getCell(`A${row}`).value = severity;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = `${percentage}%`;
       row++;
     });
@@ -451,7 +451,7 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
     // Attack Types
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Attack Types';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:B${row}`);
     row++;
 
@@ -463,14 +463,14 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
       .sort((a, b) => (b[1] as number) - (a[1] as number))
       .forEach(([type, count]) => {
         worksheet.getCell(`A${row}`).value = type;
-        worksheet.getCell(`B${row}`).value = count;
+        worksheet.getCell(`B${row}`).value = count as any;
         row++;
       });
 
     // Temporal Analysis
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Temporal Analysis - Activity by Hour';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:B${row}`);
     row++;
 
@@ -480,14 +480,14 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
 
     data.temporalAnalysis.byHour.forEach(({ hour, count }) => {
       worksheet.getCell(`A${row}`).value = hour;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       row++;
     });
 
     // Top Threat Sources
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Top Threat Sources';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:D${row}`);
     row++;
 
@@ -502,7 +502,7 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
       const action = count > 50 ? 'Block Immediately' : count > 20 ? 'Monitor Closely' : 'Monitor';
       
       worksheet.getCell(`A${row}`).value = ip;
-      worksheet.getCell(`B${row}`).value = count;
+      worksheet.getCell(`B${row}`).value = count as any;
       worksheet.getCell(`C${row}`).value = riskLevel;
       worksheet.getCell(`D${row}`).value = action;
       row++;
@@ -511,7 +511,7 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
     // SLA Metrics
     row += 2;
     worksheet.getCell(`A${row}`).value = 'SLA Performance Metrics';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:B${row}`);
     row++;
 
@@ -534,7 +534,7 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
     // Recommendations
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Executive Recommendations';
-    worksheet.getCell(`A${row}`).style = headerStyle;
+    worksheet.getCell(`A${row}`).style = headerStyle as any;
     worksheet.mergeCells(`A${row}:E${row}`);
     row++;
 
