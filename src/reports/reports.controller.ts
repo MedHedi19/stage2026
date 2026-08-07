@@ -25,7 +25,7 @@ export class ReportsController {
     @Body() body: any,
     @Res() res: express.Response,
   ) {
-    const { reportType, format, severity, ip, startDate, endDate } = body;
+    const { format, severity, ip, startDate, endDate, reportType } = body;
     const filters = {
       severity: severity ? parseInt(severity, 10) : undefined,
       ip,
@@ -36,9 +36,9 @@ export class ReportsController {
     const { buffer, filename } = await this.reportsService.generateReport(
       req.user.id,
       req.user.username,
-      reportType || ReportType.INCIDENT_DETAIL,
       format || 'pdf',
       filters,
+      reportType || ReportType.EXECUTIVE_SUMMARY,
     );
 
     const contentType =
