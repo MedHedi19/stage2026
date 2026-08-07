@@ -50,7 +50,7 @@ export class ReportsController {
   }
 
   @Get('history')
-  @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   async getHistory() {
     return this.reportsService.getHistory();

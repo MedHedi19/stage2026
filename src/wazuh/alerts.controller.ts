@@ -15,7 +15,7 @@ export class AlertsController {
   constructor(private readonly wazuhService: WazuhService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
   @Throttle({ default: { limit: 50, ttl: 60000 } })
   @AuditAction('View Alerts')
   async getAlerts(

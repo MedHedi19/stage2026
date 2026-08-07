@@ -20,14 +20,14 @@ export class FirewallController {
   ) {}
 
   @Get('blacklist')
-  @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
   @AuditAction('View Blacklist')
   async getBlacklist() {
     return this.blacklistService.list();
   }
 
   @Post('blacklist')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST)
   async addToBlacklist(@Body() addIpDto: AddIpDto, @Request() req) {
     return this.blacklistService.block(
       addIpDto.ip,
@@ -39,20 +39,20 @@ export class FirewallController {
   }
 
   @Delete('blacklist/:ip')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST)
   async removeFromBlacklist(@Param('ip') ip: string, @Request() req) {
     await this.blacklistService.unblock(ip, req.user.id, req.user.username);
   }
 
   @Get('whitelist')
-  @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
   @AuditAction('View Whitelist')
   async getWhitelist() {
     return this.whitelistService.list();
   }
 
   @Post('whitelist')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST)
   async addToWhitelist(@Body() addIpDto: AddIpDto, @Request() req) {
     return this.whitelistService.add(
       addIpDto.ip,
@@ -63,7 +63,7 @@ export class FirewallController {
   }
 
   @Delete('whitelist/:ip')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.ANALYST)
   async removeFromWhitelist(@Param('ip') ip: string, @Request() req) {
     await this.whitelistService.remove(ip, req.user.id, req.user.username);
   }
