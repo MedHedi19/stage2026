@@ -452,9 +452,10 @@ export class IncidentDetailGenerator implements ReportGenerator {
         doc.moveDown();
 
         Object.entries(data.mitreMapping).forEach(([tactic, techniques]) => {
-          if (techniques.length > 0) {
-            doc.fontSize(12).fillColor('#0b192c').text(`${tactic}: ${techniques.length} techniques`);
-            doc.fontSize(9).fillColor('#64748b').text(techniques.join(', '));
+          const techniquesArray = techniques as string[];
+          if (techniquesArray.length > 0) {
+            doc.fontSize(12).fillColor('#0b192c').text(`${tactic}: ${techniquesArray.length} techniques`);
+            doc.fontSize(9).fillColor('#64748b').text(techniquesArray.join(', '));
             doc.moveDown(0.5);
           }
         });
@@ -611,10 +612,11 @@ export class IncidentDetailGenerator implements ReportGenerator {
     row++;
 
     Object.entries(data.mitreMapping).forEach(([tactic, techniques]) => {
-      if (techniques.length > 0) {
+      const techniquesArray = techniques as string[];
+      if (techniquesArray.length > 0) {
         worksheet.getCell(`A${row}`).value = tactic;
-        worksheet.getCell(`B${row}`).value = techniques.length;
-        worksheet.getCell(`C${row}`).value = techniques.join(', ');
+        worksheet.getCell(`B${row}`).value = techniquesArray.length;
+        worksheet.getCell(`C${row}`).value = techniquesArray.join(', ');
         row++;
       }
     });

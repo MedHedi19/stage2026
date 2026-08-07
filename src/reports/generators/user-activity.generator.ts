@@ -311,9 +311,10 @@ export class UserActivityGenerator implements ReportGenerator {
         doc.moveDown();
 
         Object.entries(data.securityEvents).forEach(([event, count]) => {
-          if (count > 0) {
+          const countNumber = count as number;
+          if (countNumber > 0) {
             doc.fontSize(11).fillColor('#0b192c').text(event);
-            doc.fontSize(10).fillColor('#64748b').text(`Count: ${count as number}`);
+            doc.fontSize(10).fillColor('#64748b').text(`Count: ${countNumber}`);
             doc.moveDown(0.5);
           }
         });
@@ -517,10 +518,11 @@ export class UserActivityGenerator implements ReportGenerator {
     row++;
 
     Object.entries(data.complianceMetrics).forEach(([metric, value]) => {
-      const status = value === '100%' || value === 'N/A' ? 'Compliant' : parseFloat(value) > 90 ? 'Good' : 'Needs Improvement';
+      const valueString = value as string;
+      const status = valueString === '100%' || valueString === 'N/A' ? 'Compliant' : parseFloat(valueString) > 90 ? 'Good' : 'Needs Improvement';
       
       worksheet.getCell(`A${row}`).value = metric;
-      worksheet.getCell(`B${row}`).value = value;
+      worksheet.getCell(`B${row}`).value = valueString;
       worksheet.getCell(`C${row}`).value = status;
       row++;
     });
@@ -565,10 +567,11 @@ export class UserActivityGenerator implements ReportGenerator {
     row++;
 
     Object.entries(data.securityEvents).forEach(([event, count]) => {
-      const riskLevel = count > 10 ? 'High' : count > 5 ? 'Medium' : count > 0 ? 'Low' : 'None';
+      const countNumber = count as number;
+      const riskLevel = countNumber > 10 ? 'High' : countNumber > 5 ? 'Medium' : countNumber > 0 ? 'Low' : 'None';
       
       worksheet.getCell(`A${row}`).value = event;
-      worksheet.getCell(`B${row}`).value = count as any;
+      worksheet.getCell(`B${row}`).value = countNumber;
       worksheet.getCell(`C${row}`).value = riskLevel;
       row++;
     });
@@ -638,12 +641,13 @@ export class UserActivityGenerator implements ReportGenerator {
       .slice(0, 15);
 
     topActions.forEach(([action, count]) => {
+      const countNumber = count as number;
       const percentage = data.summary.totalActions > 0 
-        ? ((count / data.summary.totalActions) * 100).toFixed(1)
+        ? ((countNumber / data.summary.totalActions) * 100).toFixed(1)
         : '0.0';
       
       worksheet.getCell(`A${row}`).value = action;
-      worksheet.getCell(`B${row}`).value = count as any;
+      worksheet.getCell(`B${row}`).value = countNumber;
       worksheet.getCell(`C${row}`).value = `${percentage}%`;
       row++;
     });

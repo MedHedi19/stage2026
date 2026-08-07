@@ -4,7 +4,6 @@ import { ReportType } from '../report-types.enum';
 import { WazuhService } from '../../wazuh/wazuh.service';
 import PDFDocument from 'pdfkit';
 import { Workbook } from 'exceljs';
-import { ChartJSNodeCanvas } from 'chartjs-node-canvas';
 import {
   classifyAlertCategory,
   consolidateCategories,

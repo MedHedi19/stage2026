@@ -22,12 +22,12 @@ export class ReportsService {
     private readonly userActivityGenerator: UserActivityGenerator,
   ) {
     // Initialize generators map
-    this.generators = new Map([
+    this.generators = new Map<ReportType, ReportGenerator>([
       [ReportType.EXECUTIVE_SUMMARY, this.executiveSummaryGenerator],
       [ReportType.INCIDENT_DETAIL, this.incidentDetailGenerator],
       [ReportType.THREAT_INTELLIGENCE, this.threatIntelligenceGenerator],
       [ReportType.USER_ACTIVITY, this.userActivityGenerator],
-    ]);
+    ] as [ReportType, ReportGenerator][]);
   }
 
   async generateReport(
