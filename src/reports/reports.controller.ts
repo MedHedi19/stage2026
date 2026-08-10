@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards, Request, Res, UseInterceptors } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Request, Res, UseInterceptors, Logger } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import * as express from 'express';
 import { ReportsService } from './reports.service';
@@ -14,6 +14,7 @@ import { ReportType } from './report-types.enum';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @UseInterceptors(AuditLogInterceptor)
 export class ReportsController {
+  private readonly logger = new Logger(ReportsController.name);
   constructor(private readonly reportsService: ReportsService) {}
 
   @Post('generate')
@@ -33,13 +34,20 @@ export class ReportsController {
       endDate,
     };
 
-    const { buffer, filename } = await this.reportsService.generateReport(
-      req.user.id,
-      req.user.username,
-      format || 'pdf',
-      filters,
-      reportType || ReportType.EXECUTIVE_SUMMARY,
-    );
+    let generated: { buffer: Buffer; filename: string };
+    try {
+      generated = await this.reportsService.generateReport(
+        req.user.id,
+        req.user.username,
+        format || 'pdf',
+        filters,
+        reportType || ReportType.EXECUTIVE_SUMMARY,
+      );
+    } catch (error) {
+      this.logger.error(`Report generation failed (type=${reportType || ReportType.EXECUTIVE_SUMMARY}, format=${format || 'pdf'}): ${error.message}`, error.stack);
+      throw error;
+    }
+    const { buffer, filename } = generated;
 
     const contentType =
       format === 'excel'

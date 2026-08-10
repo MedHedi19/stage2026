@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import PDFDocument from 'pdfkit';
@@ -12,6 +12,7 @@ type ListRow = { list: 'Blacklist' | 'Whitelist'; ip: string; reason: string; ad
 
 @Injectable()
 export class FirewallListTrafficGenerator implements ReportGenerator {
+  private readonly logger = new Logger(FirewallListTrafficGenerator.name);
   constructor(
     private readonly wazuhService: WazuhService,
     @InjectRepository(BlacklistEntry) private readonly blacklistRepository: Repository<BlacklistEntry>,
@@ -21,11 +22,16 @@ export class FirewallListTrafficGenerator implements ReportGenerator {
   getReportTypeName() { return 'Firewall List Traffic'; }
 
   async generate({ format, filters }: ReportGeneratorData): Promise<GeneratedReport> {
-    const [blacklist, whitelist, alerts] = await Promise.all([
+    const [blacklist, whitelist] = await Promise.all([
       this.blacklistRepository.find({ where: { active: true }, order: { createdAt: 'DESC' } }),
       this.whitelistRepository.find({ order: { createdAt: 'DESC' } }),
-      this.wazuhService.fetchRecentAlerts({ startDate: filters.startDate, endDate: filters.endDate, limit: 5000 }),
     ]);
+    let alerts: any[] = [];
+    try {
+      alerts = await this.wazuhService.fetchRecentAlerts({ startDate: filters.startDate, endDate: filters.endDate, limit: 5000 });
+    } catch (error) {
+      this.logger.warn(`Unable to retrieve Wazuh traffic data; exporting list entries with zero observed traffic: ${error.message}`);
+    }
     const rows = this.buildRows(blacklist, whitelist, alerts);
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const buffer = format === 'excel' ? await this.excel(rows, filters) : await this.pdf(rows, filters);
