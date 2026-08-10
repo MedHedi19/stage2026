@@ -49,7 +49,7 @@ export class UsersController {
       if (
         body.newPassword.length < 8 ||
         body.newPassword.length > 100 ||
-        !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/.test(body.newPassword)
+        !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/.test(body.newPassword)
       ) {
         throw new BadRequestException('Password must contain at least 8 characters, including uppercase, lowercase, number, and special character');
       }
