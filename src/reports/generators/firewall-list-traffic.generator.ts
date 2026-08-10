@@ -10,6 +10,11 @@ import { GeneratedReport, ReportGenerator, ReportGeneratorData } from '../interf
 
 type ListRow = { list: 'Blacklist' | 'Whitelist'; ip: string; reason: string; addedBy: string; addedAt: Date; events: number; bytes: number };
 
+type AlertIpCandidate = {
+  alert: any;
+  ip: string;
+};
+
 @Injectable()
 export class FirewallListTrafficGenerator implements ReportGenerator {
   private readonly logger = new Logger(FirewallListTrafficGenerator.name);
@@ -41,12 +46,16 @@ export class FirewallListTrafficGenerator implements ReportGenerator {
   private buildRows(blacklist: BlacklistEntry[], whitelist: WhitelistEntry[], alerts: any[]): ListRow[] {
     const stats = new Map<string, { events: number; bytes: number }>();
     for (const alert of alerts) {
-      const ip = alert?.data?.src_ip || alert?.data?.dst_ip || alert?.data?.dest_ip;
-      if (!ip) continue;
-      const current = stats.get(ip) || { events: 0, bytes: 0 };
-      current.events += 1;
-      current.bytes += this.extractBytes(alert);
-      stats.set(ip, current);
+      const ips = this.extractAlertIps(alert);
+      if (!ips.length) continue;
+
+      const bytes = this.extractBytes(alert);
+      for (const ip of ips) {
+        const current = stats.get(ip) || { events: 0, bytes: 0 };
+        current.events += 1;
+        current.bytes += bytes;
+        stats.set(ip, current);
+      }
     }
     const mapEntry = (entry: any, list: ListRow['list']): ListRow => ({
       list, ip: entry.ip, reason: entry.reason || 'Not specified', addedBy: entry.addedBy || 'System', addedAt: entry.createdAt,
@@ -59,6 +68,21 @@ export class FirewallListTrafficGenerator implements ReportGenerator {
   private extractBytes(alert: any): number {
     const values = [alert?.data?.bytes, alert?.data?.src_bytes, alert?.data?.dest_bytes, alert?.data?.flow?.bytes, alert?.data?.network?.bytes];
     return values.reduce((sum, value) => sum + (Number.isFinite(Number(value)) ? Number(value) : 0), 0);
+  }
+
+  private extractAlertIps(alert: any): string[] {
+    const candidates = [
+      alert?.data?.src_ip,
+      alert?.data?.dst_ip,
+      alert?.data?.dest_ip,
+      alert?.data?.srcip,
+      alert?.data?.dstip,
+      alert?.data?.source_ip,
+      alert?.data?.destination_ip,
+      alert?.agent?.ip,
+    ];
+
+    return [...new Set(candidates.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))];
   }
 
   private formatBytes(bytes: number) {
