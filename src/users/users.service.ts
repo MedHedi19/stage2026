@@ -22,6 +22,7 @@ export class UsersService {
       passwordHash,
       role,
       mfaEnabled: false,
+      mustChangePassword: true,
     });
     return this.userRepository.save(user);
   }
@@ -50,7 +51,11 @@ export class UsersService {
     return this.userRepository.findOne({ where: { username } });
   }
 
-  async update(id: number, attrs: Partial<User> & { password?: string }): Promise<{ user: User; changedFields: string[] }> {
+  async update(
+    id: number,
+    attrs: Partial<User> & { password?: string },
+    options: { requirePasswordChange?: boolean } = {},
+  ): Promise<{ user: User; changedFields: string[] }> {
     const user = await this.findOne(id);
     const changedFields: string[] = [];
     
@@ -65,6 +70,7 @@ export class UsersService {
 
     if (attrs.password) {
       user.passwordHash = await bcrypt.hash(attrs.password, 12);
+      user.mustChangePassword = options.requirePasswordChange ?? false;
       changedFields.push('password');
     }
 

@@ -38,6 +38,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         username: user.username,
         role: user.role,
         mfaEnabled: user.mfaEnabled,
+        mustChangePassword: user.mustChangePassword,
       };
     } catch (e) {
       throw new UnauthorizedException('User no longer exists');

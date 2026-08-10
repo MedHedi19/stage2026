@@ -27,6 +27,9 @@ export class User {
   @Column({ default: false })
   mfaEnabled: boolean;
 
+  @Column({ default: false })
+  mustChangePassword: boolean;
+
   @Column({ type: 'varchar', length: 255, nullable: true, select: false })
   mfaSecret: string | null;
 

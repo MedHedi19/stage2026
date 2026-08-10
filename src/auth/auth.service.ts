@@ -67,6 +67,7 @@ export class AuthService {
         username: user.username,
         role: user.role,
         mfaEnabled: false,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }
@@ -79,6 +80,7 @@ export class AuthService {
       sub: user.id,
       role: user.role,
       mfaEnabled: user.mfaEnabled,
+      mustChangePassword: user.mustChangePassword,
     };
     return this.jwtService.sign(payload);
   }
@@ -128,6 +130,7 @@ export class AuthService {
         username: updatedUser.username,
         role: updatedUser.role,
         mfaEnabled: updatedUser.mfaEnabled,
+        mustChangePassword: updatedUser.mustChangePassword,
       },
     };
   }
