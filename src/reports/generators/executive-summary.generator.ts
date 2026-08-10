@@ -204,11 +204,11 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
         doc.moveDown();
 
         const metrics = [
-          { label: 'Total Events', value: data.summary.totalEvents.toLocaleString(), color: '#3b82f6' },
-          { label: 'Security Events', value: data.summary.securityEvents.toLocaleString(), color: '#ef4444' },
-          { label: 'Noise Filtered', value: data.summary.noiseFiltered.toLocaleString(), color: '#10b981' },
-          { label: 'Risk Score', value: `${data.summary.riskScore}/100`, color: data.summary.riskScore > 70 ? '#ef4444' : data.summary.riskScore > 40 ? '#f59e0b' : '#10b981' },
-          { label: 'SLA Compliance', value: data.summary.slaCompliance, color: '#8b5cf6' },
+          { label: 'Total Events', value: data.summary.totalEvents.toLocaleString(), color: '#2563eb' },
+          { label: 'Security Events', value: data.summary.securityEvents.toLocaleString(), color: '#dc2626' },
+          { label: 'Noise Filtered', value: data.summary.noiseFiltered.toLocaleString(), color: '#059669' },
+          { label: 'Risk Score', value: `${data.summary.riskScore}/100`, color: data.summary.riskScore > 70 ? '#dc2626' : data.summary.riskScore > 40 ? '#d97706' : '#059669' },
+          { label: 'SLA Compliance', value: data.summary.slaCompliance, color: '#7c3aed' },
         ];
 
         let yPos = doc.y;
@@ -222,9 +222,11 @@ export class ExecutiveSummaryGenerator implements ReportGenerator {
           const x = startX + (col * (colWidth + 20));
           const y = yPos + (row * rowHeight);
 
-          doc.rect(x, y, colWidth, 50).fillAndStroke(metric.color + '20', metric.color);
-          doc.fontSize(10).fillColor('#64748b').text(metric.label, x + 5, y + 10);
-          doc.fontSize(18).fillColor(metric.color).text(metric.value, x + 5, y + 25);
+          doc.save().roundedRect(x, y, colWidth, 50, 4).fill('#f8fafc').restore();
+          doc.roundedRect(x, y, colWidth, 50, 4).strokeColor('#cbd5e1').lineWidth(0.8).stroke();
+          doc.rect(x, y, colWidth, 4).fill(metric.color);
+          doc.fontSize(9).fillColor('#475569').text(metric.label, x + 8, y + 13);
+          doc.fontSize(18).fillColor('#0f172a').text(metric.value, x + 8, y + 27);
         });
 
         doc.y = yPos + 120;

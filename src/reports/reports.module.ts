@@ -9,9 +9,12 @@ import { ExecutiveSummaryGenerator } from './generators/executive-summary.genera
 import { IncidentDetailGenerator } from './generators/incident-detail.generator';
 import { ThreatIntelligenceGenerator } from './generators/threat-intelligence.generator';
 import { UserActivityGenerator } from './generators/user-activity.generator';
+import { FirewallListTrafficGenerator } from './generators/firewall-list-traffic.generator';
+import { BlacklistEntry } from '../firewall/entities/blacklist-entry.entity';
+import { WhitelistEntry } from '../firewall/entities/whitelist-entry.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Report]), WazuhModule, AuditModule],
+  imports: [TypeOrmModule.forFeature([Report, BlacklistEntry, WhitelistEntry]), WazuhModule, AuditModule],
   controllers: [ReportsController],
   providers: [
     ReportsService,
@@ -19,6 +22,7 @@ import { UserActivityGenerator } from './generators/user-activity.generator';
     IncidentDetailGenerator,
     ThreatIntelligenceGenerator,
     UserActivityGenerator,
+    FirewallListTrafficGenerator,
   ],
   exports: [ReportsService],
 })

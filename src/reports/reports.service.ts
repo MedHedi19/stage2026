@@ -8,6 +8,7 @@ import { ExecutiveSummaryGenerator } from './generators/executive-summary.genera
 import { IncidentDetailGenerator } from './generators/incident-detail.generator';
 import { ThreatIntelligenceGenerator } from './generators/threat-intelligence.generator';
 import { UserActivityGenerator } from './generators/user-activity.generator';
+import { FirewallListTrafficGenerator } from './generators/firewall-list-traffic.generator';
 
 @Injectable()
 export class ReportsService {
@@ -20,6 +21,7 @@ export class ReportsService {
     private readonly incidentDetailGenerator: IncidentDetailGenerator,
     private readonly threatIntelligenceGenerator: ThreatIntelligenceGenerator,
     private readonly userActivityGenerator: UserActivityGenerator,
+    private readonly firewallListTrafficGenerator: FirewallListTrafficGenerator,
   ) {
     // Initialize generators map
     this.generators = new Map<ReportType, ReportGenerator>([
@@ -27,6 +29,7 @@ export class ReportsService {
       [ReportType.INCIDENT_DETAIL, this.incidentDetailGenerator],
       [ReportType.THREAT_INTELLIGENCE, this.threatIntelligenceGenerator],
       [ReportType.USER_ACTIVITY, this.userActivityGenerator],
+      [ReportType.FIREWALL_LIST_TRAFFIC, this.firewallListTrafficGenerator],
     ] as [ReportType, ReportGenerator][]);
   }
 
