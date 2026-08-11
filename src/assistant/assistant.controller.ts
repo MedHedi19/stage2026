@@ -21,7 +21,7 @@ export class AssistantController {
   // Limit to 20 requests per hour (3600000ms) for chat
   @Throttle({ default: { limit: 20, ttl: 3600000 } })
   async chat(@Request() req, @Body() chatRequestDto: ChatRequestDto) {
-    return this.assistantService.chat(req.user.id, chatRequestDto);
+    return this.assistantService.chat(req.user.id, req.user.username, chatRequestDto);
   }
 
   @Get('history/:conversationId')
