@@ -15,11 +15,13 @@ describe('AssistantService firewall commands', () => {
     block: jest.fn(async () => undefined),
     unblock: jest.fn(async () => undefined),
     isBlacklisted: jest.fn(async () => false),
+    purgeAll: jest.fn(async () => []),
   } as any;
   const whitelistService = {
     add: jest.fn(async () => undefined),
     remove: jest.fn(async () => undefined),
     isWhitelisted: jest.fn(async () => false),
+    purgeAll: jest.fn(async () => []),
   } as any;
 
   function createService() {
@@ -115,9 +117,41 @@ describe('AssistantService firewall commands', () => {
     const service = createService();
 
     const result = await service.chat(12, 'hedi', {
-      message: 'remove all the ips from the black list',
+      message: 'block this address',
     });
 
     expect(result.reply).toContain('Donnez-moi une ou plusieurs adresses IP');
+  });
+
+  it('asks for confirmation before purging the whole blacklist', async () => {
+    const service = createService();
+
+    const result = await service.chat(12, 'hedi', {
+      message: 'remove all the ip from the blacklist',
+    });
+
+    expect(result.reply).toContain('Voulez-vous vraiment purger toute la blacklist');
+    expect(blacklistService.purgeAll).not.toHaveBeenCalled();
+  });
+
+  it('purges the whole blacklist after confirmation', async () => {
+    const service = createService();
+
+    conversationLogRepo.find.mockResolvedValueOnce([
+      {
+        userMessage: 'remove all the ip from the blacklist',
+        aiReply: 'Voulez-vous vraiment purger toute la blacklist ? Répondez oui pour confirmer.',
+      },
+    ]);
+    blacklistService.purgeAll.mockResolvedValueOnce(['192.168.101.130', '192.168.101.131']);
+
+    const result = await service.chat(12, 'hedi', {
+      message: 'oui',
+      conversationId: 'conv-1',
+    });
+
+    expect(blacklistService.purgeAll).toHaveBeenCalledWith(12, 'hedi');
+    expect(result.reply).toContain('2 IPs retirées de la blacklist.');
+    expect(result.mutation).toEqual({ type: 'ip-list-changed', ips: ['192.168.101.130', '192.168.101.131'] });
   });
 });

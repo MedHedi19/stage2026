@@ -93,6 +93,31 @@ export class WhitelistService {
   }
 
   /**
+   * Purge all whitelist entries.
+   * @returns Array of IPs that were removed from the whitelist.
+   */
+  async purgeAll(userId: number, username: string): Promise<string[]> {
+    const entries = await this.whitelistRepository.find();
+    const ips = entries.map((entry) => entry.ip);
+
+    for (const ip of ips) {
+      try {
+        await this.firewallService.removeFromSet('whitelist', ip);
+      } catch (error: any) {
+        this.logger.warn(`Failed to remove IP ${ip} from firewall whitelist during purge (continuing): ${error.message}`);
+      }
+    }
+
+    if (ips.length > 0) {
+      await this.whitelistRepository.clear();
+      await this.auditService.log(userId, username, 'Purge Whitelist', `Purged ${ips.length} whitelist entries`, ips.join(','));
+    }
+
+    this.logger.log(`Purged ${ips.length} whitelist entries`);
+    return ips;
+  }
+
+  /**
    * List all whitelist entries
    * @returns Array of whitelist entries ordered by createdAt DESC
    */

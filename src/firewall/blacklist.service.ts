@@ -124,6 +124,31 @@ export class BlacklistService {
   }
 
   /**
+   * Purge all active blacklist entries.
+   * @returns Array of IPs that were removed from the blacklist.
+   */
+  async purgeAll(userId: number, username: string): Promise<string[]> {
+    const entries = await this.blacklistRepository.find({ where: { active: true } });
+    const ips = entries.map((entry) => entry.ip);
+
+    for (const ip of ips) {
+      try {
+        await this.firewallService.removeFromSet('blacklist', ip);
+      } catch (error: any) {
+        this.logger.warn(`Failed to remove IP ${ip} from firewall blacklist during purge (continuing): ${error.message}`);
+      }
+    }
+
+    if (ips.length > 0) {
+      await this.blacklistRepository.update({ active: true }, { active: false });
+      await this.auditService.log(userId, username, 'Purge Blacklist', `Purged ${ips.length} blacklist entries`, ips.join(','));
+    }
+
+    this.logger.log(`Purged ${ips.length} blacklist entries`);
+    return ips;
+  }
+
+  /**
    * List all active blacklist entries
    * @returns Array of active blacklist entries ordered by createdAt DESC
    */

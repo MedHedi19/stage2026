@@ -113,6 +113,32 @@ Agent : ${alert.agent?.name || 'N/A'}
     return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
   }
 
+  private isAffirmativeMessage(message: string): boolean {
+    const text = this.normalizeText(message);
+    return /\b(oui|yes|yep|ok|okay|daccord|d accord|confirm|confirme|go|proceed|all of them|all them|allez|vas y|tout|tous)\b/.test(text);
+  }
+
+  private detectBulkPurgeTarget(message: string): 'blacklist' | 'whitelist' | null {
+    const text = this.normalizeText(message);
+    const wantsBulk = /\b(all|all of them|all the ip|all the ips|every ip|every ips|everything|remove all|delete all|clear all|purge|empty|vider|effacer|supprimer tout|tout|tous)\b/.test(text);
+    if (!wantsBulk) return null;
+
+    if (/\b(blacklist|black list|liste noire)\b/.test(text)) return 'blacklist';
+    if (/\b(whitelist|white list|liste blanche|allowlist)\b/.test(text)) return 'whitelist';
+    return null;
+  }
+
+  private detectPendingBulkPurge(history: ConversationLog[], message: string): 'blacklist' | 'whitelist' | null {
+    if (!this.isAffirmativeMessage(message)) return null;
+    if (history.length < 1) return null;
+
+    const lastEntry = history[history.length - 1];
+    const assistantAskedForConfirmation = /confirmez|confirmer|confirm|purge globale|vider toute|vider la liste|supprimer toute|clear the|purge the/i.test(lastEntry.aiReply || '');
+    if (!assistantAskedForConfirmation) return null;
+
+    return this.detectBulkPurgeTarget(lastEntry.userMessage);
+  }
+
   private parseFirewallCommand(message: string): {
     ips: string[];
     action: 'block' | 'unblock' | 'whitelist-add' | 'whitelist-remove' | 'remove-generic';
@@ -163,6 +189,30 @@ Agent : ${alert.agent?.name || 'N/A'}
     }
 
     return null;
+  }
+
+  private async executeBulkPurge(
+    userId: number,
+    username: string,
+    listName: 'blacklist' | 'whitelist',
+  ): Promise<{ reply: string; ips: string[] }> {
+    if (listName === 'blacklist') {
+      const ips = await this.blacklistService.purgeAll(userId, username);
+      return {
+        reply: ips.length > 0
+          ? `${ips.length} IP${ips.length > 1 ? 's' : ''} retirée${ips.length > 1 ? 's' : ''} de la blacklist.`
+          : 'La blacklist est déjà vide.',
+        ips,
+      };
+    }
+
+    const ips = await this.whitelistService.purgeAll(userId, username);
+    return {
+      reply: ips.length > 0
+        ? `${ips.length} IP${ips.length > 1 ? 's' : ''} retirée${ips.length > 1 ? 's' : ''} de la whitelist.`
+        : 'La whitelist est déjà vide.',
+      ips,
+    };
   }
 
   private async handleFirewallCommand(userId: number, username: string, message: string): Promise<{ reply: string; ips: string[] } | null> {
@@ -259,6 +309,42 @@ Agent : ${alert.agent?.name || 'N/A'}
 
   async chat(userId: number, username: string, dto: ChatRequestDto) {
     const conversationId = dto.conversationId || randomUUID();
+    const history = dto.conversationId ? await this.conversationLogRepo.find({
+      where: { conversationId: dto.conversationId },
+      order: { createdAt: 'ASC' },
+    }) : [];
+
+    const confirmedBulkTarget = this.detectPendingBulkPurge(history, dto.message);
+    if (confirmedBulkTarget) {
+      const bulkReply = await this.executeBulkPurge(userId, username, confirmedBulkTarget);
+      const log = this.conversationLogRepo.create({
+        userId,
+        alertId: dto.alertId,
+        userMessage: dto.message,
+        aiReply: bulkReply.reply,
+        conversationId,
+      });
+      await this.conversationLogRepo.save(log);
+      return { reply: bulkReply.reply, conversationId, mutation: { type: 'ip-list-changed', ips: bulkReply.ips } };
+    }
+
+    const bulkTarget = this.detectBulkPurgeTarget(dto.message);
+    if (bulkTarget) {
+      const prompt = bulkTarget === 'blacklist'
+        ? 'Voulez-vous vraiment purger toute la blacklist ? Répondez oui pour confirmer.'
+        : 'Voulez-vous vraiment purger toute la whitelist ? Répondez oui pour confirmer.';
+
+      const log = this.conversationLogRepo.create({
+        userId,
+        alertId: dto.alertId,
+        userMessage: dto.message,
+        aiReply: prompt,
+        conversationId,
+      });
+      await this.conversationLogRepo.save(log);
+      return { reply: prompt, conversationId };
+    }
+
     const firewallReply = await this.handleFirewallCommand(userId, username, dto.message);
 
     if (firewallReply) {
@@ -300,10 +386,6 @@ Agent : ${alert.agent?.name || 'N/A'}
     }
 
     if (dto.conversationId) {
-       const history = await this.conversationLogRepo.find({
-           where: { conversationId: dto.conversationId },
-           order: { createdAt: 'ASC' }
-       });
        history.forEach(log => {
            prompt += `Utilisateur: ${log.userMessage}\n`;
            prompt += `Assistant: ${log.aiReply}\n`;
