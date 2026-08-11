@@ -52,6 +52,23 @@ describe('AssistantService firewall commands', () => {
     expect(result.mutation).toEqual({ type: 'ip-list-changed', ips: ['192.168.101.130'] });
   });
 
+  it('blocks an IP when asked in French', async () => {
+    const service = createService();
+
+    const result = await service.chat(12, 'hedi', {
+      message: "blocker l'ip 192.168.101.130",
+    });
+
+    expect(blacklistService.block).toHaveBeenCalledWith(
+      '192.168.101.130',
+      expect.stringContaining("blocker l'ip 192.168.101.130"),
+      BlockSource.MANUAL,
+      12,
+      'hedi',
+    );
+    expect(result.reply).toBe('IP 192.168.101.130 ajoutée à la blacklist.');
+  });
+
   it('removes an IP from the blacklist when asked to remove it', async () => {
     blacklistService.isBlacklisted.mockResolvedValue(true);
     const service = createService();

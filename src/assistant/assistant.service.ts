@@ -145,7 +145,7 @@ Agent : ${alert.agent?.name || 'N/A'}
   } | null {
     const ips = this.extractIpv4s(message);
     const text = this.normalizeText(message);
-    const hasFirewallIntent = /\b(blacklist|black list|liste noire|whitelist|white list|liste blanche|allowlist|block|ban|unblock|unban|bloquer|bloque|debloquer|remove|delete|retire|supprime|add|ajouter|ajoute|whitelist|autoriser|trust|retirer|enlever)\b/.test(text);
+    const hasFirewallIntent = /\b(blacklist|black list|liste noire|whitelist|white list|liste blanche|allowlist|block|blocker|ban|unblock|unban|bloquer|bloque|bloquez|debloquer|remove|delete|retire|supprime|add|ajouter|ajoute|whitelist|autoriser|trust|retirer|enlever)\b/.test(text);
 
     if (ips.length === 0) {
       return hasFirewallIntent ? { ips: [], action: 'remove-generic' } : null;
@@ -172,7 +172,7 @@ Agent : ${alert.agent?.name || 'N/A'}
       return { ips, action: 'unblock' };
     }
 
-    if (/\b(block|ban|bloquer|bloque)\b/.test(text) || (hasAddWord && hasBlacklistWord)) {
+    if (/\b(block|blocker|ban|bloquer|bloque|bloquez)\b/.test(text) || (hasAddWord && hasBlacklistWord)) {
       return { ips, action: 'block' };
     }
 
