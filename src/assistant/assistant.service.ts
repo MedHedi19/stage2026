@@ -103,9 +103,9 @@ Agent : ${alert.agent?.name || 'N/A'}
       .trim();
   }
 
-  private extractIpv4(text: string): string | null {
-    const match = text.match(/\b((?:\d{1,3}\.){3}\d{1,3})\b/);
-    return match?.[1] || null;
+  private extractIpv4s(text: string): string[] {
+    const matches = text.match(/\b((?:\d{1,3}\.){3}\d{1,3})\b/g) || [];
+    return [...new Set(matches.filter((ip) => this.isValidIpv4(ip)))];
   }
 
   private isValidIpv4(ip: string): boolean {
@@ -114,93 +114,143 @@ Agent : ${alert.agent?.name || 'N/A'}
   }
 
   private parseFirewallCommand(message: string): {
-    ip: string;
+    ips: string[];
     action: 'block' | 'unblock' | 'whitelist-add' | 'whitelist-remove' | 'remove-generic';
   } | null {
-    const ip = this.extractIpv4(message);
-    if (!ip || !this.isValidIpv4(ip)) {
+    const ips = this.extractIpv4s(message);
+    const text = this.normalizeText(message);
+    const hasFirewallIntent = /\b(blacklist|black list|liste noire|whitelist|white list|liste blanche|allowlist|block|ban|unblock|unban|bloquer|bloque|debloquer|remove|delete|retire|supprime|add|ajouter|ajoute|whitelist|autoriser|trust|retirer|enlever)\b/.test(text);
+
+    if (ips.length === 0) {
+      return hasFirewallIntent ? { ips: [], action: 'remove-generic' } : null;
+    }
+
+    if (!hasFirewallIntent) {
       return null;
     }
 
-    const text = this.normalizeText(message);
     const hasBlacklistWord = /\b(blacklist|black list|liste noire|block|ban|unblock|unban|bloquer|bloque|debloquer|retirer de la liste noire|supprimer de la liste noire)\b/.test(text);
     const hasWhitelistWord = /\b(whitelist|white list|liste blanche|allowlist|allow|trust|unwhitelist|whitelisting|autoriser|ajouter a la liste blanche|retirer de la liste blanche|supprimer de la liste blanche)\b/.test(text);
     const hasAddWord = /\b(add|ajouter|ajoute|mettre|put|create|insert)\b/.test(text);
     const hasRemoveWord = /\b(remove|delete|del|retire|supprime|drop|unblock|retirer|enlever)\b/.test(text);
 
     if (/\b(unblock|unban|debloquer|retirer de la liste noire|supprimer de la liste noire)\b/.test(text)) {
-      return { ip, action: 'unblock' };
+      return { ips, action: 'unblock' };
     }
 
     if (hasRemoveWord && hasWhitelistWord) {
-      return { ip, action: 'whitelist-remove' };
+      return { ips, action: 'whitelist-remove' };
     }
 
     if (hasRemoveWord && hasBlacklistWord) {
-      return { ip, action: 'unblock' };
+      return { ips, action: 'unblock' };
     }
 
     if (/\b(block|ban|bloquer|bloque)\b/.test(text) || (hasAddWord && hasBlacklistWord)) {
-      return { ip, action: 'block' };
+      return { ips, action: 'block' };
     }
 
     if (/\b(remove from whitelist|unwhitelist|retirer de la liste blanche|supprimer de la liste blanche|delete from whitelist)\b/.test(text)) {
-      return { ip, action: 'whitelist-remove' };
+      return { ips, action: 'whitelist-remove' };
     }
 
     if (/\b(add to whitelist|liste blanche|allowlist|autoriser|trust)\b/.test(text) || (hasAddWord && hasWhitelistWord)) {
-      return { ip, action: 'whitelist-add' };
+      return { ips, action: 'whitelist-add' };
     }
 
     if (hasRemoveWord) {
-      return { ip, action: 'remove-generic' };
+      return { ips, action: 'remove-generic' };
     }
 
     return null;
   }
 
-  private async handleFirewallCommand(userId: number, username: string, message: string): Promise<string | null> {
+  private async handleFirewallCommand(userId: number, username: string, message: string): Promise<{ reply: string; ips: string[] } | null> {
     const command = this.parseFirewallCommand(message);
     if (!command) return null;
 
-    const { ip, action } = command;
+    const { ips, action } = command;
+    if (ips.length === 0) {
+      return {
+        reply: "Donnez-moi une ou plusieurs adresses IP à traiter, par exemple: block 192.168.101.130 ou remove 192.168.101.130 192.168.101.153.",
+        ips: [],
+      };
+    }
+
+    const affectedIps = new Set<string>();
+    const markAffected = (ip: string) => affectedIps.add(ip);
 
     switch (action) {
       case 'block': {
-        if (await this.whitelistService.isWhitelisted(ip)) {
-          await this.whitelistService.remove(ip, userId, username);
+        for (const ip of ips) {
+          if (await this.whitelistService.isWhitelisted(ip)) {
+            await this.whitelistService.remove(ip, userId, username);
+          }
+          const reason = `Bloqué via assistant: ${message}`;
+          await this.blacklistService.block(ip, reason, BlockSource.MANUAL, userId, username);
+          markAffected(ip);
         }
-        const reason = `Bloqué via assistant: ${message}`;
-        await this.blacklistService.block(ip, reason, BlockSource.MANUAL, userId, username);
-        return `IP ${ip} ajoutée à la blacklist.`;
+        return { reply: `${ips.length > 1 ? 'IPs' : 'IP'} ${ips.join(', ')} ajoutée${ips.length > 1 ? 's' : ''} à la blacklist.`, ips: [...affectedIps] };
       }
       case 'unblock': {
-        await this.blacklistService.unblock(ip, userId, username);
-        return `IP ${ip} retirée de la blacklist.`;
+        for (const ip of ips) {
+          await this.blacklistService.unblock(ip, userId, username);
+          markAffected(ip);
+        }
+        return { reply: `${ips.length > 1 ? 'IPs' : 'IP'} ${ips.join(', ')} retirée${ips.length > 1 ? 's' : ''} de la blacklist.`, ips: [...affectedIps] };
       }
       case 'whitelist-add': {
-        if (await this.blacklistService.isBlacklisted(ip)) {
-          await this.blacklistService.unblock(ip, userId, username);
+        for (const ip of ips) {
+          if (await this.blacklistService.isBlacklisted(ip)) {
+            await this.blacklistService.unblock(ip, userId, username);
+          }
+          await this.whitelistService.add(ip, `Ajoutée via assistant: ${message}`, userId, username);
+          markAffected(ip);
         }
-        await this.whitelistService.add(ip, `Ajoutée via assistant: ${message}`, userId, username);
-        return `IP ${ip} ajoutée à la whitelist.`;
+        return { reply: `${ips.length > 1 ? 'IPs' : 'IP'} ${ips.join(', ')} ajoutée${ips.length > 1 ? 's' : ''} à la whitelist.`, ips: [...affectedIps] };
       }
       case 'whitelist-remove': {
-        await this.whitelistService.remove(ip, userId, username);
-        return `IP ${ip} retirée de la whitelist.`;
+        for (const ip of ips) {
+          await this.whitelistService.remove(ip, userId, username);
+          markAffected(ip);
+        }
+        return { reply: `${ips.length > 1 ? 'IPs' : 'IP'} ${ips.join(', ')} retirée${ips.length > 1 ? 's' : ''} de la whitelist.`, ips: [...affectedIps] };
       }
       case 'remove-generic': {
-        if (await this.blacklistService.isBlacklisted(ip)) {
-          await this.blacklistService.unblock(ip, userId, username);
-          return `IP ${ip} retirée de la blacklist.`;
+        const removedFromBlacklist: string[] = [];
+        const removedFromWhitelist: string[] = [];
+
+        for (const ip of ips) {
+          if (await this.blacklistService.isBlacklisted(ip)) {
+            await this.blacklistService.unblock(ip, userId, username);
+            removedFromBlacklist.push(ip);
+            markAffected(ip);
+            continue;
+          }
+
+          if (await this.whitelistService.isWhitelisted(ip)) {
+            await this.whitelistService.remove(ip, userId, username);
+            removedFromWhitelist.push(ip);
+            markAffected(ip);
+          }
         }
 
-        if (await this.whitelistService.isWhitelisted(ip)) {
-          await this.whitelistService.remove(ip, userId, username);
-          return `IP ${ip} retirée de la whitelist.`;
+        if (removedFromBlacklist.length > 0 && removedFromWhitelist.length === 0) {
+          return { reply: `${removedFromBlacklist.length > 1 ? 'IPs' : 'IP'} ${removedFromBlacklist.join(', ')} retirée${removedFromBlacklist.length > 1 ? 's' : ''} de la blacklist.`, ips: [...affectedIps] };
         }
 
-        return `Je n'ai trouvé aucune entrée pour ${ip} dans la blacklist ou la whitelist.`;
+        if (removedFromWhitelist.length > 0 && removedFromBlacklist.length === 0) {
+          return { reply: `${removedFromWhitelist.length > 1 ? 'IPs' : 'IP'} ${removedFromWhitelist.join(', ')} retirée${removedFromWhitelist.length > 1 ? 's' : ''} de la whitelist.`, ips: [...affectedIps] };
+        }
+
+        if (removedFromBlacklist.length > 0 || removedFromWhitelist.length > 0) {
+          return {
+            reply: `${[...removedFromBlacklist, ...removedFromWhitelist].length > 1 ? 'IPs' : 'IP'} ${[...removedFromBlacklist, ...removedFromWhitelist].join(', ')} retirée${[...removedFromBlacklist, ...removedFromWhitelist].length > 1 ? 's' : ''} des listes.`,
+            ips: [...affectedIps],
+          };
+        }
+
+        return { reply: `Je n'ai trouvé aucune entrée pour ${ips.join(', ')} dans la blacklist ou la whitelist.`, ips: [] };
       }
       default:
         return null;
@@ -216,11 +266,11 @@ Agent : ${alert.agent?.name || 'N/A'}
         userId,
         alertId: dto.alertId,
         userMessage: dto.message,
-        aiReply: firewallReply,
+        aiReply: firewallReply.reply,
         conversationId,
       });
       await this.conversationLogRepo.save(log);
-      return { reply: firewallReply, conversationId };
+      return { reply: firewallReply.reply, conversationId, mutation: { type: 'ip-list-changed', ips: firewallReply.ips } };
     }
     
     let alertId = dto.alertId;
