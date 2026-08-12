@@ -24,6 +24,7 @@ import { Report } from './reports/entities/report.entity';
 import { ConversationLog } from './assistant/entities/conversation-log.entity';
 import { BlacklistEntry } from './firewall/entities/blacklist-entry.entity';
 import { WhitelistEntry } from './firewall/entities/whitelist-entry.entity';
+import { FirewallHistory } from './firewall/entities/firewall-history.entity';
 
 @Module({
   imports: [
@@ -54,7 +55,7 @@ import { WhitelistEntry } from './firewall/entities/whitelist-entry.entity';
         username: configService.get<string>('DB_USERNAME') || 'ids_app',
         password: configService.get<string>('DB_PASSWORD') || '',
         database: configService.get<string>('DB_DATABASE') || 'ids_ips_db',
-        entities: [User, AuditLog, Report, ConversationLog, BlacklistEntry, WhitelistEntry],
+        entities: [User, AuditLog, Report, ConversationLog, BlacklistEntry, WhitelistEntry, FirewallHistory],
         // synchronize: true should ONLY be used in development.
         // It automatically aligns the MySQL schema with TypeORM definitions on startup.
         synchronize: true,
