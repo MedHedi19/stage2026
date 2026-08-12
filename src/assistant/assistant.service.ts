@@ -607,6 +607,12 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
       };
     } catch (error) {
       console.error('Error calling Gemini API:', error);
+      
+      // Check for quota exceeded error (429)
+      if (error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota')) {
+        throw new InternalServerErrorException('Free trial quota exceeded. Please upgrade your Gemini API plan or wait for the daily quota reset.');
+      }
+      
       throw new InternalServerErrorException('Erreur lors de la communication avec le service IA');
     }
   }
