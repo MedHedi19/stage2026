@@ -198,8 +198,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
       return {
         result: {
           success: false,
-          error:
-            'Accès refusé : votre rôle (viewer) ne permet pas de modifier les listes de blocage/autorisation. Contactez un administrateur ou un analyste.',
+          error: 'Permission denied',
         },
       };
     }
