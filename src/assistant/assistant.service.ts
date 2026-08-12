@@ -1,14 +1,30 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  Content,
+  FunctionCall,
+  FunctionCallingMode,
+  FunctionResponsePart,
+  GoogleGenerativeAI,
+} from '@google/generative-ai';
+import { randomUUID } from 'crypto';
 import { ConversationLog } from './entities/conversation-log.entity';
 import { WazuhService } from '../wazuh/wazuh.service';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatRequestDto } from './dto/chat-request.dto';
-import { randomUUID } from 'crypto';
 import { BlacklistService } from '../firewall/blacklist.service';
 import { WhitelistService } from '../firewall/whitelist.service';
+import { FirewallHistoryService } from '../firewall/firewall-history.service';
+import { FirewallListType } from '../firewall/entities/firewall-history.entity';
 import { BlockSource } from '../firewall/entities/blacklist-entry.entity';
+import { ReportType } from '../reports/report-types.enum';
+import { UserRole } from '../users/entities/user.entity';
+import {
+  ASSISTANT_FUNCTION_DECLARATIONS,
+  AssistantMutation,
+  ReportParams,
+  ToolExecutionContext,
+} from './assistant.tools';
 
 @Injectable()
 export class AssistantService {
@@ -21,6 +37,7 @@ export class AssistantService {
     private readonly wazuhService: WazuhService,
     private readonly blacklistService: BlacklistService,
     private readonly whitelistService: WhitelistService,
+    private readonly firewallHistoryService: FirewallHistoryService,
   ) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -30,25 +47,29 @@ export class AssistantService {
     this.modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
   }
 
-  private getSystemPrompt(isSummaryRequest: boolean = false): string {
-    if (isSummaryRequest) {
-      return `
-Tu es un assistant SOC expert. RÈGLES :
-- Fournis une analyse claire, professionnelle et synthétique du résumé des alertes du jour en 3 à 5 lignes.
-- Ne commence pas par des formules de politesse ("Bonjour", etc.).
-- Explique la sévérité des alertes et les actions potentielles à entreprendre de manière concise.
-- Contexte : Suricata (alert= détecte, drop= bloque), Wazuh. Ne jamais inventer de données.
-`;
-    }
+  private getSystemPrompt(): string {
     return `
-Tu es un assistant SOC expert. RÈGLES STRICTES :
-- Réponds en 1 à 3 lignes MAXIMUM. Pas d'exceptions.
-- Pas de "Bonjour", "Bien sûr", "Absolument", ou autres formules.
-- Pas de listes à puces. Pas de paragraphes multiples.
-- Une seule réponse directe et concise.
-- Si besoin de détails, demande "Plus de détails ?"
+Tu es l'assistant SOC interactif de SentinelOps. Tu aides les analystes à investiguer, réagir et documenter les incidents.
 
-Contexte : Suricata (alert= détecte, drop= bloque), Wazuh. Ne jamais inventer de données.
+OUTILS DISPONIBLES (appelle-les selon l'intention, pas selon des mots-clés) :
+- analyze_alert : analyser une alerte par ID (attaque réelle, faux positif, gravité, recommandations)
+- get_daily_summary : statistiques opérationnelles du jour
+- block_ip / unblock_ip : gestion de la blacklist
+- add_to_whitelist / remove_from_whitelist : gestion de la whitelist
+- purge_blacklist / purge_whitelist : vider une liste (confirmed=true seulement après confirmation explicite)
+- get_firewall_history : historique des opérations blacklist/whitelist (qui a bloqué/débloqué, quand, pourquoi). Peut filtrer par liste (blacklist/whitelist) et limiter le nombre d'entrées.
+- generate_report : exporter un rapport PDF/Excel (types : executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
+
+COMPORTEMENT :
+- Comprends le langage naturel en français et en anglais.
+- Si une information manque (IP, ID alerte, période, format), pose UNE question claire avant d'agir.
+- Quand l'utilisateur donne un ID d'alerte et demande une analyse ou si c'est une attaque : appelle analyze_alert, interprète le résultat, donne un verdict argumenté et propose des actions concrètes.
+- Après chaque appel d'outil, synthétise le résultat pour l'analyste (2 à 5 phrases, ton professionnel SOC).
+- Pour les purges globales : demande confirmation, puis rappelle l'outil avec confirmed=true.
+- Pour les exports : vérifie type, format et période ; calcule les dates ISO si l'utilisateur dit « 7 derniers jours », « aujourd'hui », etc.
+- RAPPORTS — SUIVI DE CONTEXTE : si un [Contexte rapport précédent] est fourni et l'utilisateur demande « le même », « en excel », « sur 3 semaines », etc., réutilise les paramètres non modifiés (type, format ou dates) et appelle generate_report immédiatement avec les nouvelles valeurs. Ne redemande pas ce qui est déjà connu.
+- Ne invente jamais de données. Contexte : Suricata (alert=détecte, drop=bloque), Wazuh.
+- Pas de formules creuses (« Bonjour », « Bien sûr »). Sois direct et utile.
 `;
   }
 
@@ -57,7 +78,6 @@ Contexte : Suricata (alert= détecte, drop= bloque), Wazuh. Ne jamais inventer d
       let alert: any = null;
 
       try {
-        // Query indexer by ID directly first (rule.id or document _id)
         const directAlerts = await this.wazuhService.fetchRecentAlerts({ id: alertId, limit: 1 });
         if (directAlerts && directAlerts.length > 0) {
           alert = directAlerts[0];
@@ -67,45 +87,31 @@ Contexte : Suricata (alert= détecte, drop= bloque), Wazuh. Ne jamais inventer d
       }
 
       if (!alert) {
-        // Fallback: search in the recent 1000 alerts
         const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 1000 });
-        alert = alerts.find(a => a.rule?.id === alertId || a.id === alertId);
+        alert = alerts.find((a) => a.rule?.id === alertId || a.id === alertId);
       }
-      
+
       if (!alert) {
-        return `Aucun détail supplémentaire trouvé pour l'alerte ID ${alertId}.`;
+        return `Aucun détail trouvé pour l'alerte ID ${alertId}.`;
       }
 
       return `
-Voici les données d'une alerte de sécurité détectée par Suricata/Wazuh :
-
-Signature : ${alert.rule?.description || 'N/A'}
-Sévérité : ${alert.rule?.level || 'N/A'}
-Catégorie : ${alert.rule?.groups?.join(', ') || 'N/A'}
-IP source : ${alert.data?.src_ip || 'N/A'}
-IP destination : ${alert.data?.dest_ip || 'N/A'}
-Port destination : ${alert.data?.dest_port || 'N/A'}
-Protocole : ${alert.data?.protocol || 'N/A'}
-Horodatage : ${alert.timestamp || 'N/A'}
-Agent : ${alert.agent?.name || 'N/A'}
+Alerte de sécurité (Suricata/Wazuh) :
+- ID : ${alert.id || alertId}
+- Signature : ${alert.rule?.description || 'N/A'}
+- Sévérité : ${alert.rule?.level || 'N/A'}
+- Catégorie : ${alert.rule?.groups?.join(', ') || 'N/A'}
+- IP source : ${alert.data?.src_ip || 'N/A'}
+- IP destination : ${alert.data?.dest_ip || 'N/A'}
+- Port destination : ${alert.data?.dest_port || 'N/A'}
+- Protocole : ${alert.data?.protocol || 'N/A'}
+- Horodatage : ${alert.timestamp || 'N/A'}
+- Agent : ${alert.agent?.name || 'N/A'}
 `;
     } catch (e) {
       console.error(e);
-      return `Impossible de récupérer le contexte additionnel pour l'alerte ${alertId}.`;
+      return `Impossible de récupérer l'alerte ${alertId}.`;
     }
-  }
-
-  private normalizeText(text: string): string {
-    return text
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim();
-  }
-
-  private extractIpv4s(text: string): string[] {
-    const matches = text.match(/\b((?:\d{1,3}\.){3}\d{1,3})\b/g) || [];
-    return [...new Set(matches.filter((ip) => this.isValidIpv4(ip)))];
   }
 
   private isValidIpv4(ip: string): boolean {
@@ -113,302 +119,493 @@ Agent : ${alert.agent?.name || 'N/A'}
     return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
   }
 
-  private isAffirmativeMessage(message: string): boolean {
-    const text = this.normalizeText(message);
-    return /\b(oui|yes|yep|ok|okay|daccord|d accord|confirm|confirme|go|proceed|all of them|all them|allez|vas y|tout|tous)\b/.test(text);
-  }
+  private normalizeIps(raw: unknown): { ips: string[]; error?: string } {
+    if (!Array.isArray(raw) || raw.length === 0) {
+      return { ips: [], error: 'Aucune adresse IP fournie.' };
+    }
 
-  private detectBulkPurgeTarget(message: string): 'blacklist' | 'whitelist' | null {
-    const text = this.normalizeText(message);
-    const wantsBulk = /\b(all|all of them|all the ip|all the ips|every ip|every ips|everything|remove all|delete all|clear all|purge|empty|vider|effacer|supprimer tout|tout|tous)\b/.test(text);
-    if (!wantsBulk) return null;
-
-    if (/\b(blacklist|black list|liste noire)\b/.test(text)) return 'blacklist';
-    if (/\b(whitelist|white list|liste blanche|allowlist)\b/.test(text)) return 'whitelist';
-    return null;
-  }
-
-  private detectPendingBulkPurge(history: ConversationLog[], message: string): 'blacklist' | 'whitelist' | null {
-    if (!this.isAffirmativeMessage(message)) return null;
-    if (history.length < 1) return null;
-
-    const lastEntry = history[history.length - 1];
-    const assistantAskedForConfirmation = /confirmez|confirmer|confirm|purge globale|vider toute|vider la liste|supprimer toute|clear the|purge the/i.test(lastEntry.aiReply || '');
-    if (!assistantAskedForConfirmation) return null;
-
-    return this.detectBulkPurgeTarget(lastEntry.userMessage);
-  }
-
-  private parseFirewallCommand(message: string): {
-    ips: string[];
-    action: 'block' | 'unblock' | 'whitelist-add' | 'whitelist-remove' | 'remove-generic';
-  } | null {
-    const ips = this.extractIpv4s(message);
-    const text = this.normalizeText(message);
-    const hasFirewallIntent = /\b(blacklist|black list|liste noire|whitelist|white list|liste blanche|allowlist|block|blocker|ban|unblock|unban|bloquer|bloque|bloquez|debloquer|remove|delete|retire|supprime|add|ajouter|ajoute|whitelist|autoriser|trust|retirer|enlever)\b/.test(text);
-
+    const ips = [...new Set(raw.map(String).filter((ip) => this.isValidIpv4(ip)))];
     if (ips.length === 0) {
-      return hasFirewallIntent ? { ips: [], action: 'remove-generic' } : null;
+      return { ips: [], error: 'Adresses IP invalides. Fournissez des IPv4 valides.' };
     }
 
-    if (!hasFirewallIntent) {
-      return null;
-    }
-
-    const hasBlacklistWord = /\b(blacklist|black list|liste noire|block|ban|unblock|unban|bloquer|bloque|debloquer|retirer de la liste noire|supprimer de la liste noire)\b/.test(text);
-    const hasWhitelistWord = /\b(whitelist|white list|liste blanche|allowlist|allow|trust|unwhitelist|whitelisting|autoriser|ajouter a la liste blanche|retirer de la liste blanche|supprimer de la liste blanche)\b/.test(text);
-    const hasAddWord = /\b(add|ajouter|ajoute|mettre|put|create|insert)\b/.test(text);
-    const hasRemoveWord = /\b(remove|delete|del|retire|supprime|drop|unblock|retirer|enlever)\b/.test(text);
-
-    if (/\b(unblock|unban|debloquer|retirer de la liste noire|supprimer de la liste noire)\b/.test(text)) {
-      return { ips, action: 'unblock' };
-    }
-
-    if (hasRemoveWord && hasWhitelistWord) {
-      return { ips, action: 'whitelist-remove' };
-    }
-
-    if (hasRemoveWord && hasBlacklistWord) {
-      return { ips, action: 'unblock' };
-    }
-
-    if (/\b(block|blocker|ban|bloquer|bloque|bloquez)\b/.test(text) || (hasAddWord && hasBlacklistWord)) {
-      return { ips, action: 'block' };
-    }
-
-    if (/\b(remove from whitelist|unwhitelist|retirer de la liste blanche|supprimer de la liste blanche|delete from whitelist)\b/.test(text)) {
-      return { ips, action: 'whitelist-remove' };
-    }
-
-    if (/\b(add to whitelist|liste blanche|allowlist|autoriser|trust)\b/.test(text) || (hasAddWord && hasWhitelistWord)) {
-      return { ips, action: 'whitelist-add' };
-    }
-
-    if (hasRemoveWord) {
-      return { ips, action: 'remove-generic' };
-    }
-
-    return null;
+    return { ips };
   }
 
-  private async executeBulkPurge(
-    userId: number,
-    username: string,
-    listName: 'blacklist' | 'whitelist',
-  ): Promise<{ reply: string; ips: string[] }> {
-    if (listName === 'blacklist') {
-      const ips = await this.blacklistService.purgeAll(userId, username);
-      return {
-        reply: ips.length > 0
-          ? `${ips.length} IP${ips.length > 1 ? 's' : ''} retirée${ips.length > 1 ? 's' : ''} de la blacklist.`
-          : 'La blacklist est déjà vide.',
-        ips,
-      };
-    }
+  private async runStructuredAnalysis(context: string): Promise<{
+    summary: string;
+    investigationSteps: string[];
+    remediationSteps: string[];
+    isLikelyAttack: boolean;
+    confidence: string;
+  }> {
+    const prompt = `
+${context}
 
-    const ips = await this.whitelistService.purgeAll(userId, username);
-    return {
-      reply: ips.length > 0
-        ? `${ips.length} IP${ips.length > 1 ? 's' : ''} retirée${ips.length > 1 ? 's' : ''} de la whitelist.`
-        : 'La whitelist est déjà vide.',
-      ips,
-    };
-  }
-
-  private async handleFirewallCommand(userId: number, username: string, message: string): Promise<{ reply: string; ips: string[] } | null> {
-    const command = this.parseFirewallCommand(message);
-    if (!command) return null;
-
-    const { ips, action } = command;
-    if (ips.length === 0) {
-      return {
-        reply: "Donnez-moi une ou plusieurs adresses IP à traiter, par exemple: block 192.168.101.130 ou remove 192.168.101.130 192.168.101.153.",
-        ips: [],
-      };
-    }
-
-    const affectedIps = new Set<string>();
-    const markAffected = (ip: string) => affectedIps.add(ip);
-
-    switch (action) {
-      case 'block': {
-        for (const ip of ips) {
-          if (await this.whitelistService.isWhitelisted(ip)) {
-            await this.whitelistService.remove(ip, userId, username);
-          }
-          const reason = `Bloqué via assistant: ${message}`;
-          await this.blacklistService.block(ip, reason, BlockSource.MANUAL, userId, username);
-          markAffected(ip);
-        }
-        return { reply: `${ips.length > 1 ? 'IPs' : 'IP'} ${ips.join(', ')} ajoutée${ips.length > 1 ? 's' : ''} à la blacklist.`, ips: [...affectedIps] };
-      }
-      case 'unblock': {
-        for (const ip of ips) {
-          await this.blacklistService.unblock(ip, userId, username);
-          markAffected(ip);
-        }
-        return { reply: `${ips.length > 1 ? 'IPs' : 'IP'} ${ips.join(', ')} retirée${ips.length > 1 ? 's' : ''} de la blacklist.`, ips: [...affectedIps] };
-      }
-      case 'whitelist-add': {
-        for (const ip of ips) {
-          if (await this.blacklistService.isBlacklisted(ip)) {
-            await this.blacklistService.unblock(ip, userId, username);
-          }
-          await this.whitelistService.add(ip, `Ajoutée via assistant: ${message}`, userId, username);
-          markAffected(ip);
-        }
-        return { reply: `${ips.length > 1 ? 'IPs' : 'IP'} ${ips.join(', ')} ajoutée${ips.length > 1 ? 's' : ''} à la whitelist.`, ips: [...affectedIps] };
-      }
-      case 'whitelist-remove': {
-        for (const ip of ips) {
-          await this.whitelistService.remove(ip, userId, username);
-          markAffected(ip);
-        }
-        return { reply: `${ips.length > 1 ? 'IPs' : 'IP'} ${ips.join(', ')} retirée${ips.length > 1 ? 's' : ''} de la whitelist.`, ips: [...affectedIps] };
-      }
-      case 'remove-generic': {
-        const removedFromBlacklist: string[] = [];
-        const removedFromWhitelist: string[] = [];
-
-        for (const ip of ips) {
-          if (await this.blacklistService.isBlacklisted(ip)) {
-            await this.blacklistService.unblock(ip, userId, username);
-            removedFromBlacklist.push(ip);
-            markAffected(ip);
-            continue;
-          }
-
-          if (await this.whitelistService.isWhitelisted(ip)) {
-            await this.whitelistService.remove(ip, userId, username);
-            removedFromWhitelist.push(ip);
-            markAffected(ip);
-          }
-        }
-
-        if (removedFromBlacklist.length > 0 && removedFromWhitelist.length === 0) {
-          return { reply: `${removedFromBlacklist.length > 1 ? 'IPs' : 'IP'} ${removedFromBlacklist.join(', ')} retirée${removedFromBlacklist.length > 1 ? 's' : ''} de la blacklist.`, ips: [...affectedIps] };
-        }
-
-        if (removedFromWhitelist.length > 0 && removedFromBlacklist.length === 0) {
-          return { reply: `${removedFromWhitelist.length > 1 ? 'IPs' : 'IP'} ${removedFromWhitelist.join(', ')} retirée${removedFromWhitelist.length > 1 ? 's' : ''} de la whitelist.`, ips: [...affectedIps] };
-        }
-
-        if (removedFromBlacklist.length > 0 || removedFromWhitelist.length > 0) {
-          return {
-            reply: `${[...removedFromBlacklist, ...removedFromWhitelist].length > 1 ? 'IPs' : 'IP'} ${[...removedFromBlacklist, ...removedFromWhitelist].join(', ')} retirée${[...removedFromBlacklist, ...removedFromWhitelist].length > 1 ? 's' : ''} des listes.`,
-            ips: [...affectedIps],
-          };
-        }
-
-        return { reply: `Je n'ai trouvé aucune entrée pour ${ips.join(', ')} dans la blacklist ou la whitelist.`, ips: [] };
-      }
-      default:
-        return null;
-    }
-  }
-
-  async chat(userId: number, username: string, dto: ChatRequestDto) {
-    const conversationId = dto.conversationId || randomUUID();
-    const history = dto.conversationId ? await this.conversationLogRepo.find({
-      where: { conversationId: dto.conversationId },
-      order: { createdAt: 'ASC' },
-    }) : [];
-
-    const confirmedBulkTarget = this.detectPendingBulkPurge(history, dto.message);
-    if (confirmedBulkTarget) {
-      const bulkReply = await this.executeBulkPurge(userId, username, confirmedBulkTarget);
-      const log = this.conversationLogRepo.create({
-        userId,
-        alertId: dto.alertId,
-        userMessage: dto.message,
-        aiReply: bulkReply.reply,
-        conversationId,
-      });
-      await this.conversationLogRepo.save(log);
-      return { reply: bulkReply.reply, conversationId, mutation: { type: 'ip-list-changed', ips: bulkReply.ips } };
-    }
-
-    const bulkTarget = this.detectBulkPurgeTarget(dto.message);
-    if (bulkTarget) {
-      const prompt = bulkTarget === 'blacklist'
-        ? 'Voulez-vous vraiment purger toute la blacklist ? Répondez oui pour confirmer.'
-        : 'Voulez-vous vraiment purger toute la whitelist ? Répondez oui pour confirmer.';
-
-      const log = this.conversationLogRepo.create({
-        userId,
-        alertId: dto.alertId,
-        userMessage: dto.message,
-        aiReply: prompt,
-        conversationId,
-      });
-      await this.conversationLogRepo.save(log);
-      return { reply: prompt, conversationId };
-    }
-
-    const firewallReply = await this.handleFirewallCommand(userId, username, dto.message);
-
-    if (firewallReply) {
-      const log = this.conversationLogRepo.create({
-        userId,
-        alertId: dto.alertId,
-        userMessage: dto.message,
-        aiReply: firewallReply.reply,
-        conversationId,
-      });
-      await this.conversationLogRepo.save(log);
-      return { reply: firewallReply.reply, conversationId, mutation: { type: 'ip-list-changed', ips: firewallReply.ips } };
-    }
-    
-    let alertId = dto.alertId;
-    if (!alertId && dto.message) {
-      // Find alert IDs: typically 15-30 character alphanumeric strings (can contain dashes and underscores)
-      const match = dto.message.match(/(?:^|\s)([a-zA-Z0-9_-]{15,30})(?=$|\s|[.,;:?!])/);
-      if (match) {
-        alertId = match[1];
-      } else {
-        // Look for 4 to 6 digit rule ID
-        const ruleMatch = dto.message.match(/\b(?:rule|alert|alerte|id|règle)\s*[:#]?\s*(\d{4,6})\b/i) ||
-                          dto.message.match(/\b(\d{4,6})\b/);
-        if (ruleMatch) {
-          alertId = ruleMatch[1];
-        }
-      }
-    }
-
-    const isSummaryRequest = dto.message.toLowerCase().includes('résumé du jour') || 
-                             dto.message.toLowerCase().includes('daily summary') || 
-                             dto.message.toLowerCase().includes('sévérité');
-    let prompt = this.getSystemPrompt(isSummaryRequest) + '\n\n';
-    
-    if (alertId) {
-      const context = await this.fetchAlertContext(alertId);
-      prompt += context + '\n\n';
-    }
-
-    if (dto.conversationId) {
-       history.forEach(log => {
-           prompt += `Utilisateur: ${log.userMessage}\n`;
-           prompt += `Assistant: ${log.aiReply}\n`;
-       });
-    }
-
-    prompt += `Utilisateur: ${dto.message}\nAssistant:`;
+Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
+{
+  "summary": "résumé en 2-3 phrases",
+  "investigationSteps": ["étape 1", "étape 2", "étape 3"],
+  "remediationSteps": ["action 1", "action 2"],
+  "isLikelyAttack": true,
+  "confidence": "high|medium|low"
+}
+`;
 
     try {
       const model = this.genAI.getGenerativeModel({ model: this.modelName });
       const result = await model.generateContent(prompt);
-      const reply = result.response.text();
+      let text = result.response.text().trim();
+
+      if (text.startsWith('```json')) {
+        text = text.substring(7, text.length - 3).trim();
+      } else if (text.startsWith('```')) {
+        text = text.substring(3, text.length - 3).trim();
+      }
+
+      return JSON.parse(text);
+    } catch (error) {
+      console.error('Error running structured analysis:', error);
+      return {
+        summary: 'Analyse indisponible pour cette alerte.',
+        investigationSteps: [],
+        remediationSteps: [],
+        isLikelyAttack: false,
+        confidence: 'low',
+      };
+    }
+  }
+
+  /** Tools that modify firewall state — viewers are not allowed to call these. */
+  private static readonly MUTATING_TOOLS = new Set([
+    'block_ip',
+    'unblock_ip',
+    'add_to_whitelist',
+    'remove_from_whitelist',
+    'purge_blacklist',
+    'purge_whitelist',
+  ]);
+
+  private async executeToolCall(
+    call: FunctionCall,
+    ctx: ToolExecutionContext,
+  ): Promise<{ result: Record<string, unknown>; mutation?: AssistantMutation }> {
+    // Viewers may read / analyse but cannot mutate firewall lists
+    if (
+      ctx.userRole === UserRole.VIEWER &&
+      AssistantService.MUTATING_TOOLS.has(call.name)
+    ) {
+      return {
+        result: {
+          success: false,
+          error:
+            'Accès refusé : votre rôle (viewer) ne permet pas de modifier les listes de blocage/autorisation. Contactez un administrateur ou un analyste.',
+        },
+      };
+    }
+
+    const args = (call.args || {}) as Record<string, unknown>;
+
+    switch (call.name) {
+      case 'analyze_alert': {
+        const alertId = String(args.alertId || '').trim();
+        if (!alertId) {
+          return { result: { success: false, error: 'alertId requis.' } };
+        }
+
+        const context = await this.fetchAlertContext(alertId);
+        if (context.startsWith('Aucun détail') || context.startsWith('Impossible')) {
+          return { result: { success: false, alertId, error: context } };
+        }
+
+        const analysis = await this.runStructuredAnalysis(context);
+        return {
+          result: {
+            success: true,
+            alertId,
+            context,
+            analysis,
+            verdict: analysis.isLikelyAttack
+              ? `Probable attaque (confiance ${analysis.confidence})`
+              : `Probable faux positif ou activité bénigne (confiance ${analysis.confidence})`,
+          },
+        };
+      }
+
+      case 'get_daily_summary': {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const stats = await this.wazuhService.getAlertStats({
+          startDate: todayStart.toISOString(),
+        });
+        return {
+          result: {
+            success: true,
+            date: todayStart.toISOString().slice(0, 10),
+            totalAlerts: stats.totalAlerts,
+            severityDistribution: stats.severityDistribution,
+            attacksByType: stats.attacksByType,
+            topSourceIps: stats.topSourceIps?.slice(0, 5) || [],
+          },
+        };
+      }
+
+      case 'block_ip': {
+        const { ips, error } = this.normalizeIps(args.ips);
+        if (error) return { result: { success: false, error } };
+
+        const reason = String(args.reason || `Bloqué via assistant: ${ctx.userMessage}`);
+        const affectedIps: string[] = [];
+
+        for (const ip of ips) {
+          if (await this.whitelistService.isWhitelisted(ip)) {
+            await this.whitelistService.remove(ip, ctx.userId, ctx.username);
+          }
+          await this.blacklistService.block(ip, reason, BlockSource.MANUAL, ctx.userId, ctx.username);
+          affectedIps.push(ip);
+        }
+
+        return {
+          result: { success: true, action: 'block', ips: affectedIps },
+          mutation: { type: 'ip-list-changed', ips: affectedIps },
+        };
+      }
+
+      case 'unblock_ip': {
+        const { ips, error } = this.normalizeIps(args.ips);
+        if (error) return { result: { success: false, error } };
+
+        for (const ip of ips) {
+          await this.blacklistService.unblock(ip, ctx.userId, ctx.username);
+        }
+
+        return {
+          result: { success: true, action: 'unblock', ips },
+          mutation: { type: 'ip-list-changed', ips },
+        };
+      }
+
+      case 'add_to_whitelist': {
+        const { ips, error } = this.normalizeIps(args.ips);
+        if (error) return { result: { success: false, error } };
+
+        const reason = String(args.reason || `Ajoutée via assistant: ${ctx.userMessage}`);
+
+        for (const ip of ips) {
+          if (await this.blacklistService.isBlacklisted(ip)) {
+            await this.blacklistService.unblock(ip, ctx.userId, ctx.username);
+          }
+          await this.whitelistService.add(ip, reason, ctx.userId, ctx.username);
+        }
+
+        return {
+          result: { success: true, action: 'whitelist-add', ips },
+          mutation: { type: 'ip-list-changed', ips },
+        };
+      }
+
+      case 'remove_from_whitelist': {
+        const { ips, error } = this.normalizeIps(args.ips);
+        if (error) return { result: { success: false, error } };
+
+        for (const ip of ips) {
+          await this.whitelistService.remove(ip, ctx.userId, ctx.username);
+        }
+
+        return {
+          result: { success: true, action: 'whitelist-remove', ips },
+          mutation: { type: 'ip-list-changed', ips },
+        };
+      }
+
+      case 'purge_blacklist': {
+        if (args.confirmed !== true) {
+          return {
+            result: {
+              success: false,
+              needsConfirmation: true,
+              message: 'Demandez confirmation à l\'utilisateur avant de purger toute la blacklist.',
+            },
+          };
+        }
+
+        const ips = await this.blacklistService.purgeAll(ctx.userId, ctx.username);
+        return {
+          result: {
+            success: true,
+            action: 'purge-blacklist',
+            count: ips.length,
+            ips,
+          },
+          mutation: { type: 'ip-list-changed', ips },
+        };
+      }
+
+      case 'purge_whitelist': {
+        if (args.confirmed !== true) {
+          return {
+            result: {
+              success: false,
+              needsConfirmation: true,
+              message: 'Demandez confirmation à l\'utilisateur avant de purger toute la whitelist.',
+            },
+          };
+        }
+
+        const ips = await this.whitelistService.purgeAll(ctx.userId, ctx.username);
+        return {
+          result: {
+            success: true,
+            action: 'purge-whitelist',
+            count: ips.length,
+            ips,
+          },
+          mutation: { type: 'ip-list-changed', ips },
+        };
+      }
+
+      case 'generate_report': {
+        const format = String(args.format || '').toLowerCase();
+        const reportType = String(args.reportType || '') as ReportType;
+        const startDate = String(args.startDate || '');
+        const endDate = String(args.endDate || '');
+
+        if (!['pdf', 'excel'].includes(format)) {
+          return { result: { success: false, error: 'Format invalide. Utilisez pdf ou excel.' } };
+        }
+
+        if (!Object.values(ReportType).includes(reportType)) {
+          return {
+            result: {
+              success: false,
+              error: `Type invalide. Valeurs : ${Object.values(ReportType).join(', ')}`,
+            },
+          };
+        }
+
+        if (!startDate || !endDate || Number.isNaN(Date.parse(startDate)) || Number.isNaN(Date.parse(endDate))) {
+          return { result: { success: false, error: 'Dates startDate/endDate ISO 8601 requises.' } };
+        }
+
+        const reportParams: ReportParams = {
+          format: format as 'pdf' | 'excel',
+          reportType,
+          startDate,
+          endDate,
+        };
+
+        return {
+          result: {
+            success: true,
+            action: 'generate-report',
+            ...reportParams,
+          },
+          mutation: {
+            type: 'report-request',
+            report: reportParams,
+          },
+        };
+      }
+
+      case 'get_firewall_history': {
+        const rawListType = args.listType ? String(args.listType).toLowerCase() : undefined;
+        let listType: FirewallListType | undefined;
+
+        if (rawListType === 'blacklist') listType = FirewallListType.BLACKLIST;
+        else if (rawListType === 'whitelist') listType = FirewallListType.WHITELIST;
+
+        const limit = args.limit ? Number(args.limit) : undefined;
+        const entries = await this.firewallHistoryService.getHistory(listType, limit);
+
+        return {
+          result: {
+            success: true,
+            count: entries.length,
+            history: entries.map((e) => ({
+              id: e.id,
+              listType: e.listType,
+              action: e.action,
+              ip: e.ip,
+              reason: e.reason,
+              performedBy: e.performedBy,
+              date: e.createdAt,
+            })),
+          },
+        };
+      }
+
+      default:
+        return { result: { success: false, error: `Outil inconnu: ${call.name}` } };
+    }
+  }
+
+  private parseLogMetadata(metadata: string | null): { lastReport?: ReportParams } | null {
+    if (!metadata) return null;
+    try {
+      return JSON.parse(metadata);
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveLastReport(
+    history: ConversationLog[],
+    dtoLastReport?: ReportParams,
+  ): ReportParams | null {
+    for (let i = history.length - 1; i >= 0; i--) {
+      const parsed = this.parseLogMetadata(history[i].metadata);
+      if (parsed?.lastReport) return parsed.lastReport;
+    }
+    return dtoLastReport || null;
+  }
+
+  private formatReportContext(report: ReportParams): string {
+    return `[Contexte rapport précédent : type=${report.reportType}, format=${report.format}, startDate=${report.startDate}, endDate=${report.endDate}]`;
+  }
+
+  private buildContents(
+    history: ConversationLog[],
+    userMessage: string,
+    alertId?: string,
+    lastReport?: ReportParams | null,
+  ): Content[] {
+    const contents: Content[] = [];
+
+    for (const log of history) {
+      contents.push({ role: 'user', parts: [{ text: log.userMessage }] });
+      contents.push({ role: 'model', parts: [{ text: log.aiReply }] });
+    }
+
+    const contextLines: string[] = [];
+    if (alertId) {
+      contextLines.push(`[Contexte : alerte courante ID ${alertId}]`);
+    }
+    if (lastReport) {
+      contextLines.push(this.formatReportContext(lastReport));
+    }
+
+    const message =
+      contextLines.length > 0 ? `${contextLines.join('\n')}\n${userMessage}` : userMessage;
+
+    contents.push({ role: 'user', parts: [{ text: message }] });
+    return contents;
+  }
+
+  private mergeMutations(mutations: AssistantMutation[]): AssistantMutation | undefined {
+    if (mutations.length === 0) return undefined;
+
+    const ipMutations = mutations.filter((m) => m.type === 'ip-list-changed');
+    const reportMutation = mutations.find((m) => m.type === 'report-request');
+
+    if (reportMutation) return reportMutation;
+
+    if (ipMutations.length > 0) {
+      const ips = [...new Set(ipMutations.flatMap((m) => m.ips || []))];
+      return { type: 'ip-list-changed', ips };
+    }
+
+    return undefined;
+  }
+
+  private async runChatWithTools(
+    contents: Content[],
+    ctx: ToolExecutionContext,
+  ): Promise<{ reply: string; mutation?: AssistantMutation }> {
+    const model = this.genAI.getGenerativeModel({
+      model: this.modelName,
+      systemInstruction: this.getSystemPrompt(),
+      tools: [{ functionDeclarations: ASSISTANT_FUNCTION_DECLARATIONS }],
+      toolConfig: {
+        functionCallingConfig: { mode: FunctionCallingMode.AUTO },
+      },
+    });
+
+    const mutations: AssistantMutation[] = [];
+    let currentContents = [...contents];
+    const maxRounds = 6;
+
+    for (let round = 0; round < maxRounds; round++) {
+      const result = await model.generateContent({ contents: currentContents });
+      const response = result.response;
+      const functionCalls = response.functionCalls();
+
+      if (!functionCalls || functionCalls.length === 0) {
+        return {
+          reply: response.text() || 'Je n\'ai pas pu formuler de réponse.',
+          mutation: this.mergeMutations(mutations),
+        };
+      }
+
+      const modelParts = response.candidates?.[0]?.content?.parts;
+      if (modelParts?.length) {
+        currentContents.push({ role: 'model', parts: modelParts });
+      } else {
+        currentContents.push({
+          role: 'model',
+          parts: functionCalls.map((fc) => ({ functionCall: fc })),
+        });
+      }
+
+      const functionResponseParts: FunctionResponsePart[] = [];
+      for (const call of functionCalls) {
+        const { result: toolResult, mutation } = await this.executeToolCall(call, ctx);
+        if (mutation) mutations.push(mutation);
+        functionResponseParts.push({
+          functionResponse: {
+            name: call.name,
+            response: toolResult,
+          },
+        });
+      }
+
+      currentContents.push({ role: 'function', parts: functionResponseParts });
+    }
+
+    return {
+      reply: 'Je n\'ai pas pu finaliser la réponse. Pouvez-vous reformuler votre demande ?',
+      mutation: this.mergeMutations(mutations),
+    };
+  }
+
+  async chat(userId: number, username: string, userRole: string, dto: ChatRequestDto) {
+    const conversationId = dto.conversationId || randomUUID();
+    const history = dto.conversationId
+      ? await this.conversationLogRepo.find({
+          where: { conversationId: dto.conversationId },
+          order: { createdAt: 'ASC' },
+        })
+      : [];
+
+    const lastReport = this.resolveLastReport(history, dto.lastReport);
+    const contents = this.buildContents(history, dto.message, dto.alertId, lastReport);
+    const ctx: ToolExecutionContext = {
+      userId,
+      username,
+      userMessage: dto.message,
+      userRole: userRole,
+    };
+
+    try {
+      const { reply, mutation } = await this.runChatWithTools(contents, ctx);
 
       const log = this.conversationLogRepo.create({
         userId,
-        alertId,
+        alertId: dto.alertId,
         userMessage: dto.message,
         aiReply: reply,
         conversationId,
+        metadata:
+          mutation?.type === 'report-request' && mutation.report
+            ? JSON.stringify({ lastReport: mutation.report })
+            : null,
       });
       await this.conversationLogRepo.save(log);
 
-      return { reply, conversationId };
+      return {
+        reply,
+        conversationId,
+        ...(mutation ? { mutation } : {}),
+      };
     } catch (error) {
       console.error('Error calling Gemini API:', error);
       throw new InternalServerErrorException('Erreur lors de la communication avec le service IA');
@@ -418,45 +615,18 @@ Agent : ${alert.agent?.name || 'N/A'}
   async getHistory(conversationId: string) {
     return this.conversationLogRepo.find({
       where: { conversationId },
-      order: { createdAt: 'ASC' }
+      order: { createdAt: 'ASC' },
     });
   }
 
-  async getQuickAnalysis(userId: number, alertId: string) {
+  async getQuickAnalysis(_userId: number, alertId: string) {
     const context = await this.fetchAlertContext(alertId);
-
-    const prompt = `
-${context}
-
-Réponds STRICTEMENT dans ce format JSON, sans texte avant ou après :
-{
-  "summary": "résumé en 2-3 phrases de ce qui s'est passé et de sa gravité",
-  "investigationSteps": ["étape 1", "étape 2", "étape 3"],
-  "remediationSteps": ["action 1", "action 2"]
-}
-`;
-
-    try {
-      const model = this.genAI.getGenerativeModel({ model: this.modelName });
-      const result = await model.generateContent(prompt);
-      let text = result.response.text().trim();
-
-      if (text.startsWith('\`\`\`json')) {
-         text = text.substring(7, text.length - 3).trim();
-      } else if (text.startsWith('\`\`\`')) {
-         text = text.substring(3, text.length - 3).trim();
-      }
-
-      const parsed = JSON.parse(text);
-      return parsed;
-    } catch (error) {
-      console.error('Error getting quick analysis:', error);
-      return {
-         summary: "Impossible de générer l'analyse. Vérifiez les logs.",
-         investigationSteps: [],
-         remediationSteps: []
-      };
-    }
+    const analysis = await this.runStructuredAnalysis(context);
+    return {
+      summary: analysis.summary,
+      investigationSteps: analysis.investigationSteps,
+      remediationSteps: analysis.remediationSteps,
+    };
   }
 
   async getLatestAlert() {
@@ -473,13 +643,18 @@ Réponds STRICTEMENT dans ce format JSON, sans texte avant ou après :
     try {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      const stats = await this.wazuhService.getAlertStats({
-        startDate: todayStart.toISOString()
+      return await this.wazuhService.getAlertStats({
+        startDate: todayStart.toISOString(),
       });
-      return stats;
     } catch (error) {
       console.error('Error fetching daily summary:', error);
-      return { totalAlerts: 0, severityDistribution: {}, attacksByType: {}, topSourceIps: [], alertsOverTime: [] };
+      return {
+        totalAlerts: 0,
+        severityDistribution: {},
+        attacksByType: {},
+        topSourceIps: [],
+        alertsOverTime: [],
+      };
     }
   }
 }

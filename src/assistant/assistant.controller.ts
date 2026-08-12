@@ -16,35 +16,35 @@ export class AssistantController {
   constructor(private readonly assistantService: AssistantService) {}
 
   @Post('chat')
-  @Roles(UserRole.ANALYST, UserRole.ADMIN)
+  @Roles(UserRole.ANALYST, UserRole.ADMIN, UserRole.VIEWER)
   @AuditAction('Talk with AI')
   // Limit to 20 requests per hour (3600000ms) for chat
   @Throttle({ default: { limit: 20, ttl: 3600000 } })
   async chat(@Request() req, @Body() chatRequestDto: ChatRequestDto) {
-    return this.assistantService.chat(req.user.id, req.user.username, chatRequestDto);
+    return this.assistantService.chat(req.user.id, req.user.username, req.user.role, chatRequestDto);
   }
 
   @Get('history/:conversationId')
-  @Roles(UserRole.ANALYST, UserRole.ADMIN)
+  @Roles(UserRole.ANALYST, UserRole.ADMIN, UserRole.VIEWER)
   async getHistory(@Param('conversationId') conversationId: string) {
     return this.assistantService.getHistory(conversationId);
   }
 
   @Get('quick-actions/:alertId')
-  @Roles(UserRole.ANALYST, UserRole.ADMIN)
+  @Roles(UserRole.ANALYST, UserRole.ADMIN, UserRole.VIEWER)
   @Throttle({ default: { limit: 20, ttl: 3600000 } })
   async getQuickAnalysis(@Request() req, @Param('alertId') alertId: string) {
     return this.assistantService.getQuickAnalysis(req.user.id, alertId);
   }
 
   @Get('latest-alert')
-  @Roles(UserRole.ANALYST, UserRole.ADMIN)
+  @Roles(UserRole.ANALYST, UserRole.ADMIN, UserRole.VIEWER)
   async getLatestAlert() {
     return this.assistantService.getLatestAlert();
   }
 
   @Get('daily-summary')
-  @Roles(UserRole.ANALYST, UserRole.ADMIN)
+  @Roles(UserRole.ANALYST, UserRole.ADMIN, UserRole.VIEWER)
   async getDailySummary() {
     return this.assistantService.getDailySummary();
   }

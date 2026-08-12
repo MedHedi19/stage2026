@@ -4,14 +4,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BlacklistEntry } from './entities/blacklist-entry.entity';
 import { WhitelistEntry } from './entities/whitelist-entry.entity';
+import { FirewallHistory } from './entities/firewall-history.entity';
 import { FirewallService } from './firewall.service';
 import { BlacklistService } from './blacklist.service';
 import { WhitelistService } from './whitelist.service';
+import { FirewallHistoryService } from './firewall-history.service';
 import { FirewallController } from './firewall.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([BlacklistEntry, WhitelistEntry]),
+    TypeOrmModule.forFeature([BlacklistEntry, WhitelistEntry, FirewallHistory]),
   ],
   controllers: [
     FirewallController,
@@ -20,12 +22,14 @@ import { FirewallController } from './firewall.controller';
     FirewallService,
     BlacklistService,
     WhitelistService,
+    FirewallHistoryService,
   ],
   exports: [
     TypeOrmModule,
     FirewallService,
     BlacklistService,
     WhitelistService,
+    FirewallHistoryService,
   ],
 })
 export class FirewallModule implements OnModuleInit {

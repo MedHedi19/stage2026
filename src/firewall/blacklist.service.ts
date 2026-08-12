@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { BlacklistEntry, BlockSource } from './entities/blacklist-entry.entity';
 import { FirewallService } from './firewall.service';
 import { AuditService } from '../audit/audit.service';
+import { FirewallHistoryService } from './firewall-history.service';
+import { FirewallListType, FirewallAction } from './entities/firewall-history.entity';
 
 @Injectable()
 export class BlacklistService {
@@ -14,6 +16,7 @@ export class BlacklistService {
     private blacklistRepository: Repository<BlacklistEntry>,
     private readonly firewallService: FirewallService,
     private readonly auditService: AuditService,
+    private readonly historyService: FirewallHistoryService,
   ) {}
 
   /**
@@ -62,6 +65,7 @@ export class BlacklistService {
         this.logger.log(`Re-activated blocked IP ${ip} (source: ${source}, reason: ${reason})`);
 
         await this.auditService.log(userId, username, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
+        await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.ADD, ip, reason, username ?? 'system');
         return savedEntry;
       }
     }
@@ -88,6 +92,7 @@ export class BlacklistService {
 
     // Audit log
     await this.auditService.log(userId, username, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
+    await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.ADD, ip, reason, username ?? 'system');
 
     return savedEntry;
   }
@@ -121,6 +126,7 @@ export class BlacklistService {
 
     // Audit log
     await this.auditService.log(userId, username, 'Remove from Blacklist', `${ip} - Reason: ${reason}`, ip);
+    await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.REMOVE, ip, reason, username ?? 'system');
   }
 
   /**
@@ -142,6 +148,9 @@ export class BlacklistService {
     if (ips.length > 0) {
       await this.blacklistRepository.update({ active: true }, { active: false });
       await this.auditService.log(userId, username, 'Purge Blacklist', `Purged ${ips.length} blacklist entries`, ips.join(','));
+      for (const ip of ips) {
+        await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.PURGE, ip, 'Purge all', username ?? 'system');
+      }
     }
 
     this.logger.log(`Purged ${ips.length} blacklist entries`);

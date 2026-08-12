@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { WhitelistEntry } from './entities/whitelist-entry.entity';
 import { FirewallService } from './firewall.service';
 import { AuditService } from '../audit/audit.service';
+import { FirewallHistoryService } from './firewall-history.service';
+import { FirewallListType, FirewallAction } from './entities/firewall-history.entity';
 
 @Injectable()
 export class WhitelistService {
@@ -14,6 +16,7 @@ export class WhitelistService {
     private whitelistRepository: Repository<WhitelistEntry>,
     private readonly firewallService: FirewallService,
     private readonly auditService: AuditService,
+    private readonly historyService: FirewallHistoryService,
   ) {}
 
   /**
@@ -60,6 +63,7 @@ export class WhitelistService {
 
     // Audit log
     await this.auditService.log(userId, username, 'Add to Whitelist', `${ip} - Reason: ${reason}`, ip);
+    await this.historyService.record(FirewallListType.WHITELIST, FirewallAction.ADD, ip, reason, username);
 
     return savedEntry;
   }
@@ -90,6 +94,7 @@ export class WhitelistService {
 
     // Audit log
     await this.auditService.log(userId, username, 'Remove from Whitelist', `${ip} - Reason: ${reason}`, ip);
+    await this.historyService.record(FirewallListType.WHITELIST, FirewallAction.REMOVE, ip, reason, username);
   }
 
   /**
@@ -111,6 +116,9 @@ export class WhitelistService {
     if (ips.length > 0) {
       await this.whitelistRepository.clear();
       await this.auditService.log(userId, username, 'Purge Whitelist', `Purged ${ips.length} whitelist entries`, ips.join(','));
+      for (const ip of ips) {
+        await this.historyService.record(FirewallListType.WHITELIST, FirewallAction.PURGE, ip, 'Purge all', username);
+      }
     }
 
     this.logger.log(`Purged ${ips.length} whitelist entries`);

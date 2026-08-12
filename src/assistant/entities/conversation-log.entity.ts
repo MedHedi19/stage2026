@@ -17,6 +17,9 @@ export class ConversationLog {
   @Column('text')
   aiReply: string;
 
+  @Column({ type: 'text', nullable: true })
+  metadata: string | null;
+
   @Column()
   conversationId: string;
 
