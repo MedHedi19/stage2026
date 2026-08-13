@@ -47,8 +47,11 @@ export class AssistantService {
     this.modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
   }
 
-  private getSystemPrompt(): string {
-    return `
+  private getSystemPrompt(language: string = 'fr'): string {
+    const isFrench = language === 'fr';
+    
+    if (isFrench) {
+      return `
 Tu es l'assistant SOC interactif de SentinelOps. Tu aides les analystes à investiguer, réagir et documenter les incidents.
 
 OUTILS DISPONIBLES (appelle-les selon l'intention, pas selon des mots-clés) :
@@ -71,6 +74,31 @@ COMPORTEMENT :
 - Ne invente jamais de données. Contexte : Suricata (alert=détecte, drop=bloque), Wazuh.
 - Pas de formules creuses (« Bonjour », « Bien sûr »). Sois direct et utile.
 `;
+    } else {
+      return `
+You are the interactive SOC assistant for SentinelOps. You help analysts investigate, respond to, and document incidents.
+
+AVAILABLE TOOLS (call them based on intent, not keywords):
+- analyze_alert: analyze an alert by ID (real attack, false positive, severity, recommendations)
+- get_daily_summary: daily operational statistics
+- block_ip / unblock_ip: blacklist management
+- add_to_whitelist / remove_from_whitelist: whitelist management
+- purge_blacklist / purge_whitelist: clear a list (confirmed=true only after explicit confirmation)
+- get_firewall_history: history of blacklist/whitelist operations (who blocked/unblocked, when, why). Can filter by list (blacklist/whitelist) and limit number of entries.
+- generate_report: export a PDF/Excel report (types: executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
+
+BEHAVIOR:
+- Understand natural language in French and English.
+- If information is missing (IP, alert ID, period, format), ask ONE clear question before acting.
+- When the user provides an alert ID and requests analysis or if it's an attack: call analyze_alert, interpret the result, provide an argued verdict and suggest concrete actions.
+- After each tool call, synthesize the result for the analyst (2-5 sentences, professional SOC tone).
+- For global purges: request confirmation, then recall the tool with confirmed=true.
+- For exports: verify type, format and period; calculate ISO dates if user says "last 7 days", "today", etc.
+- REPORTS — CONTEXT TRACKING: if a [Previous report context] is provided and user asks for "the same", "in excel", "for 3 weeks", etc., reuse unchanged parameters (type, format or dates) and call generate_report immediately with new values. Don't ask for what's already known.
+- Never invent data. Context: Suricata (alert=detects, drop=blocks), Wazuh.
+- No empty formulas ("Hello", "Of course"). Be direct and useful.
+`;
+    }
   }
 
   private async fetchAlertContext(alertId: string): Promise<string> {
@@ -512,7 +540,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
   ): Promise<{ reply: string; mutation?: AssistantMutation }> {
     const model = this.genAI.getGenerativeModel({
       model: this.modelName,
-      systemInstruction: this.getSystemPrompt(),
+      systemInstruction: this.getSystemPrompt(ctx.language || 'fr'),
       tools: [{ functionDeclarations: ASSISTANT_FUNCTION_DECLARATIONS }],
       toolConfig: {
         functionCallingConfig: { mode: FunctionCallingMode.AUTO },
@@ -582,6 +610,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
       username,
       userMessage: dto.message,
       userRole: userRole,
+      language: (dto as any).language || 'fr',
     };
 
     try {

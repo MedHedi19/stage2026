@@ -4,21 +4,21 @@ import { ReportType } from '../../reports/report-types.enum';
 
 class LastReportDto {
   @IsIn(['pdf', 'excel'])
-  format: 'pdf' | 'excel';
+  format!: 'pdf' | 'excel';
 
   @IsString()
-  reportType: ReportType;
+  reportType!: ReportType;
 
   @IsString()
-  startDate: string;
+  startDate!: string;
 
   @IsString()
-  endDate: string;
+  endDate!: string;
 }
 
 export class ChatRequestDto {
   @IsString()
-  message: string;
+  message!: string;
 
   @IsString()
   @IsOptional()
@@ -32,4 +32,8 @@ export class ChatRequestDto {
   @ValidateNested()
   @Type(() => LastReportDto)
   lastReport?: LastReportDto;
+
+  @IsString()
+  @IsOptional()
+  language?: string;
 }

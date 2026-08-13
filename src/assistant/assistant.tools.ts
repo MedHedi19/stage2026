@@ -19,6 +19,7 @@ export interface ToolExecutionContext {
   username: string;
   userMessage: string;
   userRole: string;
+  language?: string;
 }
 
 const REPORT_TYPE_VALUES = Object.values(ReportType);
