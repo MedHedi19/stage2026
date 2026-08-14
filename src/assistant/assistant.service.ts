@@ -64,6 +64,7 @@ OUTILS DISPONIBLES (appelle-les selon l'intention, pas selon des mots-clés) :
 - generate_report : exporter un rapport PDF/Excel (types : executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
 
 COMPORTEMENT :
+- RÉPONSE TOUJOURS dans la même langue que l'utilisateur (français ou anglais).
 - Comprends le langage naturel en français et en anglais.
 - Si une information manque (IP, ID alerte, période, format), pose UNE question claire avant d'agir.
 - Quand l'utilisateur donne un ID d'alerte et demande une analyse ou si c'est une attaque : appelle analyze_alert, interprète le résultat, donne un verdict argumenté et propose des actions concrètes.
@@ -88,6 +89,7 @@ AVAILABLE TOOLS (call them based on intent, not keywords):
 - generate_report: export a PDF/Excel report (types: executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
 
 BEHAVIOR:
+- ALWAYS respond in the same language as the user (French or English).
 - Understand natural language in French and English.
 - If information is missing (IP, alert ID, period, format), ask ONE clear question before acting.
 - When the user provides an alert ID and requests analysis or if it's an attack: call analyze_alert, interpret the result, provide an argued verdict and suggest concrete actions.
@@ -538,6 +540,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
     contents: Content[],
     ctx: ToolExecutionContext,
   ): Promise<{ reply: string; mutation?: AssistantMutation }> {
+    const isFrench = ctx.language === 'fr';
     const model = this.genAI.getGenerativeModel({
       model: this.modelName,
       systemInstruction: this.getSystemPrompt(ctx.language || 'fr'),
@@ -558,7 +561,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
 
       if (!functionCalls || functionCalls.length === 0) {
         return {
-          reply: response.text() || 'Je n\'ai pas pu formuler de réponse.',
+          reply: response.text() || (isFrench ? 'Je n\'ai pas pu formuler de réponse.' : 'I could not formulate a response.'),
           mutation: this.mergeMutations(mutations),
         };
       }
