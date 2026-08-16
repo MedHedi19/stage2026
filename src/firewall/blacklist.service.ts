@@ -228,7 +228,7 @@ export class BlacklistService {
     const countryCounts: Record<string, number> = {};
 
     for (const entry of entries) {
-      if (entry.countryCode) {
+      if (entry.countryCode && entry.countryCode !== 'N/A' && entry.countryCode !== 'n/a') {
         countryCounts[entry.countryCode] = (countryCounts[entry.countryCode] || 0) + 1;
       }
     }
