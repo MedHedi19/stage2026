@@ -247,7 +247,7 @@ export class BlacklistService {
     const entriesWithoutCountry = await this.blacklistRepository.find({
       where: { active: true, countryCode: IsNull() },
       select: ['id', 'ip'],
-    });
+    } as any);
 
     let updated = 0;
     for (const entry of entriesWithoutCountry) {
