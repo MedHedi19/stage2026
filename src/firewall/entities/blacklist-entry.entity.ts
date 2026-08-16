@@ -32,9 +32,9 @@ export class BlacklistEntry {
   @Column({ default: true })
   active!: boolean;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, type: 'int' })
   abuseScore: number | null;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, type: 'varchar', length: 255 })
   abuseCategories: string | null;
 }
