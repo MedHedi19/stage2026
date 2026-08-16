@@ -167,12 +167,17 @@ export class BlacklistService {
 
   /**
    * List all active blacklist entries
+   * @param page Page number (default: 1)
+   * @param limit Items per page (default: 50)
    * @returns Array of active blacklist entries ordered by createdAt DESC
    */
-  async list(): Promise<BlacklistEntry[]> {
+  async list(page: number = 1, limit: number = 50): Promise<BlacklistEntry[]> {
+    const skip = (page - 1) * limit;
     return this.blacklistRepository.find({
       where: { active: true },
       order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
     });
   }
 
@@ -186,5 +191,15 @@ export class BlacklistService {
       where: { ip, active: true },
     });
     return count > 0;
+  }
+
+  /**
+   * Count total active blacklist entries
+   * @returns Total count of active blacklist entries
+   */
+  async count(): Promise<number> {
+    return this.blacklistRepository.count({
+      where: { active: true },
+    });
   }
 }

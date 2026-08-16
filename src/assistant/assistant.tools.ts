@@ -204,4 +204,33 @@ export const ASSISTANT_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
       },
     },
   },
+  {
+    name: 'check_ip_reputation',
+    description:
+      'Vérifie la réputation d\'une adresse IP via AbuseIPDB. ' +
+      'Retourne le score de confiance (0-100), le nombre de rapports, les catégories de menaces et le pays. ' +
+      'Utilise cet outil quand l\'utilisateur demande de vérifier si une IP est malveillante, son score de menace, ou son niveau de confiance.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        ip: {
+          type: SchemaType.STRING,
+          description: 'Adresse IP à vérifier (IPv4).',
+        },
+      },
+      required: ['ip'],
+    },
+  },
+  {
+    name: 'sync_threat_feed',
+    description:
+      'Déclenche manuellement la synchronisation du flux de menaces AbuseIPDB. ' +
+      'Récupère les IP malveillantes à haute confiance (≥95%) et les ajoute à la blacklist. ' +
+      'Retourne le nombre d\'IP ajoutées, ignorées et le total traité. ' +
+      'Utilise cet outil quand l\'utilisateur demande de synchroniser les menaces, mettre à jour la blacklist automatiquement, ou déclencher le flux de menaces.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
+  },
 ];

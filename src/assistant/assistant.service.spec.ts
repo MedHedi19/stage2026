@@ -21,6 +21,23 @@ jest.mock('@google/generative-ai', () => ({
   },
 }));
 
+const threatIntelService = {
+  checkIp: jest.fn().mockResolvedValue({
+    abuseScore: 75,
+    totalReports: 12,
+    categories: [14, 18],
+    countryCode: 'US',
+  }),
+};
+
+const threatFeedScheduler = {
+  performSync: jest.fn().mockResolvedValue({
+    added: 5,
+    skipped: 3,
+    total: 8,
+  }),
+};
+
 function mockTextResponse(text: string) {
   return {
     response: {
@@ -90,6 +107,8 @@ describe('AssistantService tool-driven chat', () => {
       wazuhService,
       blacklistService,
       whitelistService,
+      threatIntelService as any,
+      threatFeedScheduler as any,
     );
   }
 

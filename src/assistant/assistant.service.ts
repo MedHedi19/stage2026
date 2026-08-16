@@ -15,6 +15,8 @@ import { ChatRequestDto } from './dto/chat-request.dto';
 import { BlacklistService } from '../firewall/blacklist.service';
 import { WhitelistService } from '../firewall/whitelist.service';
 import { FirewallHistoryService } from '../firewall/firewall-history.service';
+import { ThreatIntelService } from '../firewall/threat-intel.service';
+import { ThreatFeedScheduler } from '../firewall/threat-feed.scheduler';
 import { FirewallListType } from '../firewall/entities/firewall-history.entity';
 import { BlockSource } from '../firewall/entities/blacklist-entry.entity';
 import { ReportType } from '../reports/report-types.enum';
@@ -38,6 +40,8 @@ export class AssistantService {
     private readonly blacklistService: BlacklistService,
     private readonly whitelistService: WhitelistService,
     private readonly firewallHistoryService: FirewallHistoryService,
+    private readonly threatIntelService: ThreatIntelService,
+    private readonly threatFeedScheduler: ThreatFeedScheduler,
   ) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -62,6 +66,8 @@ OUTILS DISPONIBLES (appelle-les selon l'intention, pas selon des mots-clés) :
 - purge_blacklist / purge_whitelist : vider une liste (confirmed=true seulement après confirmation explicite)
 - get_firewall_history : historique des opérations blacklist/whitelist (qui a bloqué/débloqué, quand, pourquoi). Peut filtrer par liste (blacklist/whitelist) et limiter le nombre d'entrées.
 - generate_report : exporter un rapport PDF/Excel (types : executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
+- check_ip_reputation : vérifier la réputation d'une IP via AbuseIPDB (score de confiance, rapports, catégories, pays)
+- sync_threat_feed : synchroniser automatiquement le flux de menaces AbuseIPDB (IPs à haute confiance ≥95%)
 
 COMPORTEMENT :
 - RÉPONSE TOUJOURS dans la même langue que l'utilisateur (français ou anglais).
@@ -87,6 +93,8 @@ AVAILABLE TOOLS (call them based on intent, not keywords):
 - purge_blacklist / purge_whitelist: clear a list (confirmed=true only after explicit confirmation)
 - get_firewall_history: history of blacklist/whitelist operations (who blocked/unblocked, when, why). Can filter by list (blacklist/whitelist) and limit number of entries.
 - generate_report: export a PDF/Excel report (types: executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
+- check_ip_reputation: check IP reputation via AbuseIPDB (confidence score, reports, categories, country)
+- sync_threat_feed: automatically sync AbuseIPDB threat feed (high confidence IPs ≥95%)
 
 BEHAVIOR:
 - ALWAYS respond in the same language as the user (French or English).
@@ -459,6 +467,48 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
               performedBy: e.performedBy,
               date: e.createdAt,
             })),
+          },
+        };
+
+      case 'check_ip_reputation': {
+        const ip = String(args.ip || '').trim();
+        if (!ip) {
+          return { result: { success: false, error: 'IP requis.' } };
+        }
+
+        const threatInfo = await this.threatIntelService.checkIp(ip);
+        if (threatInfo) {
+          return {
+            result: {
+              success: true,
+              ip,
+              abuseScore: threatInfo.abuseScore,
+              totalReports: threatInfo.totalReports,
+              categories: threatInfo.categories,
+              countryCode: threatInfo.countryCode,
+              severity: threatInfo.abuseScore >= 50 ? 'high' : threatInfo.abuseScore >= 25 ? 'medium' : 'low',
+            },
+          };
+        } else {
+          return {
+            result: {
+              success: true,
+              ip,
+              message: 'Aucune donnée de réputation disponible pour cette IP.',
+            },
+          };
+        }
+      }
+
+      case 'sync_threat_feed': {
+        const syncResult = await this.threatFeedScheduler.performSync();
+        return {
+          result: {
+            success: true,
+            added: syncResult.added,
+            skipped: syncResult.skipped,
+            total: syncResult.total,
+            message: `Synchronisation terminée : ${syncResult.added} ajoutées, ${syncResult.skipped} ignorées, ${syncResult.total} traitées.`,
           },
         };
       }

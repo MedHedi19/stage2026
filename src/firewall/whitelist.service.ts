@@ -127,11 +127,16 @@ export class WhitelistService {
 
   /**
    * List all whitelist entries
+   * @param page Page number (default: 1)
+   * @param limit Items per page (default: 50)
    * @returns Array of whitelist entries ordered by createdAt DESC
    */
-  async list(): Promise<WhitelistEntry[]> {
+  async list(page: number = 1, limit: number = 50): Promise<WhitelistEntry[]> {
+    const skip = (page - 1) * limit;
     return this.whitelistRepository.find({
       order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
     });
   }
 
@@ -145,5 +150,13 @@ export class WhitelistService {
       where: { ip },
     });
     return count > 0;
+  }
+
+  /**
+   * Count total whitelist entries
+   * @returns Total count of whitelist entries
+   */
+  async count(): Promise<number> {
+    return this.whitelistRepository.count();
   }
 }

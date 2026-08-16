@@ -29,8 +29,17 @@ export class FirewallController {
   @Get('blacklist')
   @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
   @AuditAction('View Blacklist')
-  async getBlacklist() {
-    return this.blacklistService.list();
+  async getBlacklist(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : 1;
+    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    const [data, total] = await Promise.all([
+      this.blacklistService.list(parsedPage, parsedLimit),
+      this.blacklistService.count(),
+    ]);
+    return { data, total, page: parsedPage, limit: parsedLimit };
   }
 
   @Post('blacklist')
@@ -66,8 +75,17 @@ export class FirewallController {
   @Get('whitelist')
   @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
   @AuditAction('View Whitelist')
-  async getWhitelist() {
-    return this.whitelistService.list();
+  async getWhitelist(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedPage = page ? parseInt(page, 10) : 1;
+    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    const [data, total] = await Promise.all([
+      this.whitelistService.list(parsedPage, parsedLimit),
+      this.whitelistService.count(),
+    ]);
+    return { data, total, page: parsedPage, limit: parsedLimit };
   }
 
   @Post('whitelist')
