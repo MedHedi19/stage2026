@@ -121,7 +121,7 @@ BEHAVIOR:
           alert = directAlerts[0];
         }
       } catch (directError) {
-        console.warn(`[Assistant] Direct alert query failed for ID ${alertId}:`, directError.message);
+        console.warn(`[Assistant] Direct alert query failed for ID ${alertId}:`, (directError as Error).message);
       }
 
       if (!alert) {
