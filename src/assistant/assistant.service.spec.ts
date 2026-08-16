@@ -90,6 +90,11 @@ describe('AssistantService tool-driven chat', () => {
     unblock: jest.fn(async () => undefined),
     isBlacklisted: jest.fn(async () => false),
     purgeAll: jest.fn(async () => []),
+    getCountryStats: jest.fn(async () => [
+      { countryCode: 'US', count: 25 },
+      { countryCode: 'RU', count: 15 },
+      { countryCode: 'CN', count: 10 },
+    ]),
   } as any;
 
   const whitelistService = {
@@ -105,7 +110,7 @@ describe('AssistantService tool-driven chat', () => {
     return new AssistantService(
       conversationLogRepo,
       wazuhService,
-      blacklistService,
+      blacklistService as any,
       whitelistService,
       threatIntelService as any,
       threatFeedScheduler as any,

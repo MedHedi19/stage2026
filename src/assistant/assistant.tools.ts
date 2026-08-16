@@ -233,4 +233,15 @@ export const ASSISTANT_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
       properties: {},
     },
   },
+  {
+    name: 'get_country_stats',
+    description:
+      'Récupère les statistiques géographiques des IP blacklistées. ' +
+      'Retourne les pays les plus représentés dans la blacklist avec leurs comptes. ' +
+      'Utilise cet outil quand l\'utilisateur demande quels sont les pays les plus dangereux, les top pays, ou la distribution géographique des menaces.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
+  },
 ];

@@ -68,6 +68,7 @@ OUTILS DISPONIBLES (appelle-les selon l'intention, pas selon des mots-clés) :
 - generate_report : exporter un rapport PDF/Excel (types : executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
 - check_ip_reputation : vérifier la réputation d'une IP via AbuseIPDB (score de confiance, rapports, catégories, pays)
 - sync_threat_feed : synchroniser automatiquement le flux de menaces AbuseIPDB (IPs à haute confiance ≥95%)
+- get_country_stats : obtenir les statistiques géographiques des IP blacklistées (top pays, distribution géographique)
 
 COMPORTEMENT :
 - RÉPONSE TOUJOURS dans la même langue que l'utilisateur (français ou anglais).
@@ -95,6 +96,7 @@ AVAILABLE TOOLS (call them based on intent, not keywords):
 - generate_report: export a PDF/Excel report (types: executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
 - check_ip_reputation: check IP reputation via AbuseIPDB (confidence score, reports, categories, country)
 - sync_threat_feed: automatically sync AbuseIPDB threat feed (high confidence IPs ≥95%)
+- get_country_stats: get geographic statistics of blacklisted IPs (top countries, geographic distribution)
 
 BEHAVIOR:
 - ALWAYS respond in the same language as the user (French or English).
@@ -510,6 +512,21 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
             skipped: syncResult.skipped,
             total: syncResult.total,
             message: `Synchronisation terminée : ${syncResult.added} ajoutées, ${syncResult.skipped} ignorées, ${syncResult.total} traitées.`,
+          },
+        };
+      }
+
+      case 'get_country_stats': {
+        const countryStats = await this.blacklistService.getCountryStats();
+        return {
+          result: {
+            success: true,
+            countries: countryStats.map(stat => ({
+              country: stat.countryCode,
+              count: stat.count,
+            })),
+            total: countryStats.length,
+            message: `${countryStats.length} pays représentés dans la blacklist.`,
           },
         };
       }
