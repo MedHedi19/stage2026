@@ -26,6 +26,7 @@ export class BlacklistService {
    * @param source - Source of block ('auto' or 'manual')
    * @param userId - User ID who initiated the block (null for auto)
    * @param username - Username who initiated the block (null for auto)
+   * @param threatData - Optional threat intelligence data from AbuseIPDB
    * @returns The blacklist entry (existing if already blocked, new if just blocked)
    */
   async block(
@@ -34,6 +35,7 @@ export class BlacklistService {
     source: BlockSource,
     userId: number | null,
     username: string | null,
+    threatData?: { abuseScore?: number; abuseCategories?: string },
   ): Promise<BlacklistEntry> {
     // Check for ANY existing entry for this IP (regardless of active status)
     const anyExistingEntry = await this.blacklistRepository.findOne({
@@ -60,6 +62,10 @@ export class BlacklistService {
         anyExistingEntry.source = source;
         anyExistingEntry.addedBy = username ?? 'system';
         anyExistingEntry.createdAt = new Date();
+        if (threatData) {
+          anyExistingEntry.abuseScore = threatData.abuseScore ?? null;
+          anyExistingEntry.abuseCategories = threatData.abuseCategories ?? null;
+        }
 
         const savedEntry = await this.blacklistRepository.save(anyExistingEntry);
         this.logger.log(`Re-activated blocked IP ${ip} (source: ${source}, reason: ${reason})`);
@@ -85,6 +91,8 @@ export class BlacklistService {
       source,
       addedBy: username ?? 'system',
       active: true,
+      abuseScore: threatData?.abuseScore ?? null,
+      abuseCategories: threatData?.abuseCategories ?? null,
     });
 
     const savedEntry = await this.blacklistRepository.save(entry);

@@ -2,6 +2,8 @@ import { Module, OnModuleInit, Logger } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { HttpModule } from '@nestjs/axios';
+import { ConfigModule } from '@nestjs/config';
 import { BlacklistEntry } from './entities/blacklist-entry.entity';
 import { WhitelistEntry } from './entities/whitelist-entry.entity';
 import { FirewallHistory } from './entities/firewall-history.entity';
@@ -9,11 +11,15 @@ import { FirewallService } from './firewall.service';
 import { BlacklistService } from './blacklist.service';
 import { WhitelistService } from './whitelist.service';
 import { FirewallHistoryService } from './firewall-history.service';
+import { ThreatIntelService } from './threat-intel.service';
+import { ThreatFeedScheduler } from './threat-feed.scheduler';
 import { FirewallController } from './firewall.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([BlacklistEntry, WhitelistEntry, FirewallHistory]),
+    HttpModule,
+    ConfigModule,
   ],
   controllers: [
     FirewallController,
@@ -23,6 +29,8 @@ import { FirewallController } from './firewall.controller';
     BlacklistService,
     WhitelistService,
     FirewallHistoryService,
+    ThreatIntelService,
+    ThreatFeedScheduler,
   ],
   exports: [
     TypeOrmModule,
@@ -30,6 +38,8 @@ import { FirewallController } from './firewall.controller';
     BlacklistService,
     WhitelistService,
     FirewallHistoryService,
+    ThreatIntelService,
+    ThreatFeedScheduler,
   ],
 })
 export class FirewallModule implements OnModuleInit {

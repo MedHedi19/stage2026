@@ -8,27 +8,33 @@ export enum BlockSource {
 @Entity('blacklist_entries')
 export class BlacklistEntry {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ unique: true })
-  ip: string;
+  ip!: string;
 
   @Column({ nullable: true })
-  reason: string;
+  reason!: string;
 
   @Column({
     type: 'enum',
     enum: BlockSource,
     default: BlockSource.MANUAL,
   })
-  source: BlockSource;
+  source!: BlockSource;
 
   @Column({ nullable: true })
-  addedBy: string;
+  addedBy!: string;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @Column({ default: true })
-  active: boolean;
+  active!: boolean;
+
+  @Column({ nullable: true })
+  abuseScore: number | null;
+
+  @Column({ nullable: true })
+  abuseCategories: string | null;
 }

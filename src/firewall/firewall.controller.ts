@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request, UseInterceptors, Query } from '@nestjs/common';
 import { BlacklistService } from './blacklist.service';
 import { WhitelistService } from './whitelist.service';
+import { ThreatIntelService } from './threat-intel.service';
+import { ThreatFeedScheduler } from './threat-feed.scheduler';
 import { BlockSource } from './entities/blacklist-entry.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../roles/roles.guard';
@@ -20,6 +22,8 @@ export class FirewallController {
     private readonly blacklistService: BlacklistService,
     private readonly whitelistService: WhitelistService,
     private readonly firewallHistoryService: FirewallHistoryService,
+    private readonly threatIntelService: ThreatIntelService,
+    private readonly threatFeedScheduler: ThreatFeedScheduler,
   ) {}
 
   @Get('blacklist')
@@ -45,6 +49,18 @@ export class FirewallController {
   @Roles(UserRole.ADMIN, UserRole.ANALYST)
   async removeFromBlacklist(@Param('ip') ip: string, @Request() req) {
     await this.blacklistService.unblock(ip, req.user.id, req.user.username);
+  }
+
+  @Get('check-reputation/:ip')
+  @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  async checkReputation(@Param('ip') ip: string) {
+    return this.threatIntelService.checkIp(ip);
+  }
+
+  @Post('sync-threat-feed')
+  @Roles(UserRole.ADMIN)
+  async syncThreatFeed() {
+    return this.threatFeedScheduler.performSync();
   }
 
   @Get('whitelist')

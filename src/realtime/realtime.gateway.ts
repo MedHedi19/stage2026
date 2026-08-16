@@ -5,6 +5,7 @@ import { WazuhService } from '../wazuh/wazuh.service';
 import { Logger } from '@nestjs/common';
 import { WhitelistService } from '../firewall/whitelist.service';
 import { BlacklistService } from '../firewall/blacklist.service';
+import { ThreatIntelService } from '../firewall/threat-intel.service';
 import { BlockSource } from '../firewall/entities/blacklist-entry.entity';
 import { AUTO_BLOCK_SIDS } from '../firewall/auto-block.config';
 
@@ -24,6 +25,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly wazuhService: WazuhService,
     private readonly whitelistService: WhitelistService,
     private readonly blacklistService: BlacklistService,
+    private readonly threatIntelService: ThreatIntelService,
   ) {}
 
   afterInit(server: Server) {
@@ -82,12 +84,32 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
             // Check if SID triggers auto-block
             if (isInAutoBlockList) {
               const description = alert.rule?.description || 'Unknown threat';
+              
+              // Enrich with threat intelligence (optional - don't fail if API is down)
+              let blockReason = `Auto-blocked: ${description}`;
+              let threatData: { abuseScore?: number; abuseCategories?: string } | undefined;
+              
+              try {
+                const threatInfo = await this.threatIntelService.checkIp(srcIp);
+                if (threatInfo) {
+                  blockReason += ` (AbuseIPDB score: ${threatInfo.abuseScore}/100, ${threatInfo.totalReports} reports)`;
+                  threatData = {
+                    abuseScore: threatInfo.abuseScore,
+                    abuseCategories: threatInfo.categories.join(','),
+                  };
+                }
+              } catch (error: any) {
+                // Threat intel is enrichment only - don't fail the block if it errors
+                this.logger.warn(`Threat intel check failed for ${srcIp}: ${error.message}`);
+              }
+              
               await this.blacklistService.block(
                 srcIp,
-                `Auto-blocked: ${description}`,
+                blockReason,
                 BlockSource.AUTO,
                 null,
                 null,
+                threatData,
               );
               this.logger.log(`Auto-blocked IP ${srcIp} for SID ${sid}`);
             }
