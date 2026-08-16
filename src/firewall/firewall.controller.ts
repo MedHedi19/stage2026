@@ -80,6 +80,14 @@ export class FirewallController {
     return this.blacklistService.getCountryStats();
   }
 
+  @Post('backfill-country-codes')
+  @Roles(UserRole.ADMIN)
+  @AuditAction('Backfill Country Codes')
+  async backfillCountryCodes() {
+    const updated = await this.blacklistService.backfillCountryCodes();
+    return { updated, message: `Updated ${updated} entries with country codes` };
+  }
+
   @Get('whitelist')
   @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
   @AuditAction('View Whitelist')

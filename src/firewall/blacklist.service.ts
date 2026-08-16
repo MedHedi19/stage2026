@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { BlacklistEntry, BlockSource } from './entities/blacklist-entry.entity';
 import { FirewallService } from './firewall.service';
 import { AuditService } from '../audit/audit.service';
 import { FirewallHistoryService } from './firewall-history.service';
 import { FirewallListType, FirewallAction } from './entities/firewall-history.entity';
+import { ThreatIntelService } from './threat-intel.service';
 
 @Injectable()
 export class BlacklistService {
@@ -17,6 +18,7 @@ export class BlacklistService {
     private readonly firewallService: FirewallService,
     private readonly auditService: AuditService,
     private readonly historyService: FirewallHistoryService,
+    private readonly threatIntelService: ThreatIntelService,
   ) {}
 
   /**
@@ -234,5 +236,34 @@ export class BlacklistService {
     return Object.entries(countryCounts)
       .map(([countryCode, count]) => ({ countryCode, count }))
       .sort((a, b) => b.count - a.count);
+  }
+
+  /**
+   * Backfill country codes for existing blacklist entries without country data
+   * This is a maintenance operation to update old entries with AbuseIPDB country data
+   * @returns Number of entries updated
+   */
+  async backfillCountryCodes(): Promise<number> {
+    const entriesWithoutCountry = await this.blacklistRepository.find({
+      where: { active: true, countryCode: IsNull() },
+      select: ['id', 'ip'],
+    });
+
+    let updated = 0;
+    for (const entry of entriesWithoutCountry) {
+      try {
+        const threatInfo = await this.threatIntelService.checkIp(entry.ip);
+        if (threatInfo && threatInfo.countryCode) {
+          await this.blacklistRepository.update(entry.id, {
+            countryCode: threatInfo.countryCode,
+          });
+          updated++;
+        }
+      } catch (error) {
+        console.error(`Failed to fetch country for ${entry.ip}:`, error);
+      }
+    }
+
+    return updated;
   }
 }
