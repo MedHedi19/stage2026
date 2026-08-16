@@ -62,7 +62,7 @@ export class ThreatFeedScheduler {
             BlockSource.AUTO,
             null,
             null,
-            { abuseScore: 95, abuseCategories: null },
+            { abuseScore: 95, abuseCategories: undefined },
           );
 
           this.logger.log(`Added IP to blacklist from threat feed: ${ip}`);
