@@ -5,6 +5,7 @@ import { ReportsService } from './reports.service';
 import { ReportsController } from './reports.controller';
 import { WazuhModule } from '../wazuh/wazuh.module';
 import { AuditModule } from '../audit/audit.module';
+import { FirewallModule } from '../firewall/firewall.module';
 import { ExecutiveSummaryGenerator } from './generators/executive-summary.generator';
 import { IncidentDetailGenerator } from './generators/incident-detail.generator';
 import { ThreatIntelligenceGenerator } from './generators/threat-intelligence.generator';
@@ -14,7 +15,7 @@ import { BlacklistEntry } from '../firewall/entities/blacklist-entry.entity';
 import { WhitelistEntry } from '../firewall/entities/whitelist-entry.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Report, BlacklistEntry, WhitelistEntry]), WazuhModule, AuditModule],
+  imports: [TypeOrmModule.forFeature([Report, BlacklistEntry, WhitelistEntry]), WazuhModule, AuditModule, FirewallModule],
   controllers: [ReportsController],
   providers: [
     ReportsService,
