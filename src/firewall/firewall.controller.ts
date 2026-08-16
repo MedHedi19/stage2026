@@ -32,12 +32,13 @@ export class FirewallController {
   async getBlacklist(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('search') search?: string,
   ) {
     const parsedPage = page ? parseInt(page, 10) : 1;
-    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    const parsedLimit = limit ? parseInt(limit, 10) : 30;
     const [data, total] = await Promise.all([
-      this.blacklistService.list(parsedPage, parsedLimit),
-      this.blacklistService.count(),
+      this.blacklistService.list(parsedPage, parsedLimit, search),
+      this.blacklistService.count(search),
     ]);
     return { data, total, page: parsedPage, limit: parsedLimit };
   }
@@ -72,18 +73,26 @@ export class FirewallController {
     return this.threatFeedScheduler.performSync();
   }
 
+  @Get('country-stats')
+  @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
+  @AuditAction('View Country Statistics')
+  async getCountryStats() {
+    return this.blacklistService.getCountryStats();
+  }
+
   @Get('whitelist')
   @Roles(UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER)
   @AuditAction('View Whitelist')
   async getWhitelist(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('search') search?: string,
   ) {
     const parsedPage = page ? parseInt(page, 10) : 1;
-    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    const parsedLimit = limit ? parseInt(limit, 10) : 30;
     const [data, total] = await Promise.all([
-      this.whitelistService.list(parsedPage, parsedLimit),
-      this.whitelistService.count(),
+      this.whitelistService.list(parsedPage, parsedLimit, search),
+      this.whitelistService.count(search),
     ]);
     return { data, total, page: parsedPage, limit: parsedLimit };
   }

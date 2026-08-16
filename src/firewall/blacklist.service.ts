@@ -35,7 +35,7 @@ export class BlacklistService {
     source: BlockSource,
     userId: number | null,
     username: string | null,
-    threatData?: { abuseScore?: number; abuseCategories?: string },
+    threatData?: { abuseScore?: number; abuseCategories?: string; countryCode?: string },
   ): Promise<BlacklistEntry> {
     // Check for ANY existing entry for this IP (regardless of active status)
     const anyExistingEntry = await this.blacklistRepository.findOne({
@@ -65,6 +65,7 @@ export class BlacklistService {
         if (threatData) {
           anyExistingEntry.abuseScore = threatData.abuseScore ?? null;
           anyExistingEntry.abuseCategories = threatData.abuseCategories ?? null;
+          anyExistingEntry.countryCode = threatData.countryCode ?? null;
         }
 
         const savedEntry = await this.blacklistRepository.save(anyExistingEntry);
@@ -93,6 +94,7 @@ export class BlacklistService {
       active: true,
       abuseScore: threatData?.abuseScore ?? null,
       abuseCategories: threatData?.abuseCategories ?? null,
+      countryCode: threatData?.countryCode ?? null,
     });
 
     const savedEntry = await this.blacklistRepository.save(entry);
@@ -168,13 +170,18 @@ export class BlacklistService {
   /**
    * List all active blacklist entries
    * @param page Page number (default: 1)
-   * @param limit Items per page (default: 50)
+   * @param limit Items per page (default: 30)
+   * @param search Optional search term for IP addresses
    * @returns Array of active blacklist entries ordered by createdAt DESC
    */
-  async list(page: number = 1, limit: number = 50): Promise<BlacklistEntry[]> {
+  async list(page: number = 1, limit: number = 30, search?: string): Promise<BlacklistEntry[]> {
     const skip = (page - 1) * limit;
+    const where: any = { active: true };
+    if (search) {
+      where.ip = search;
+    }
     return this.blacklistRepository.find({
-      where: { active: true },
+      where,
       order: { createdAt: 'DESC' },
       skip,
       take: limit,
@@ -195,11 +202,37 @@ export class BlacklistService {
 
   /**
    * Count total active blacklist entries
+   * @param search Optional search term for IP addresses
    * @returns Total count of active blacklist entries
    */
-  async count(): Promise<number> {
-    return this.blacklistRepository.count({
+  async count(search?: string): Promise<number> {
+    const where: any = { active: true };
+    if (search) {
+      where.ip = search;
+    }
+    return this.blacklistRepository.count({ where });
+  }
+
+  /**
+   * Get country statistics from blacklist entries
+   * @returns Array of country codes with their counts
+   */
+  async getCountryStats(): Promise<{ countryCode: string; count: number }[]> {
+    const entries = await this.blacklistRepository.find({
       where: { active: true },
-    });
+      select: ['countryCode'],
+    } as any);
+
+    const countryCounts: Record<string, number> = {};
+
+    for (const entry of entries) {
+      if (entry.countryCode) {
+        countryCounts[entry.countryCode] = (countryCounts[entry.countryCode] || 0) + 1;
+      }
+    }
+
+    return Object.entries(countryCounts)
+      .map(([countryCode, count]) => ({ countryCode, count }))
+      .sort((a, b) => b.count - a.count);
   }
 }

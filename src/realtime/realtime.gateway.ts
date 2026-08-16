@@ -87,7 +87,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
               
               // Enrich with threat intelligence (optional - don't fail if API is down)
               let blockReason = `Auto-blocked: ${description}`;
-              let threatData: { abuseScore?: number; abuseCategories?: string } | undefined;
+              let threatData: { abuseScore?: number; abuseCategories?: string; countryCode?: string } | undefined;
               
               try {
                 const threatInfo = await this.threatIntelService.checkIp(srcIp);
@@ -96,6 +96,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
                   threatData = {
                     abuseScore: threatInfo.abuseScore,
                     abuseCategories: threatInfo.categories.join(','),
+                    countryCode: threatInfo.countryCode,
                   };
                 }
               } catch (error: any) {
