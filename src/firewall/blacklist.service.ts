@@ -222,7 +222,7 @@ export class BlacklistService {
   async getCountryStats(): Promise<{ countryCode: string; count: number }[]> {
     const entries = await this.blacklistRepository.find({
       where: { active: true },
-      select: ['countryCode'],
+      select: { countryCode: true },
     } as any);
 
     const countryCounts: Record<string, number> = {};
@@ -246,7 +246,7 @@ export class BlacklistService {
   async backfillCountryCodes(): Promise<number> {
     const entriesWithoutCountry = await this.blacklistRepository.find({
       where: { active: true, countryCode: IsNull() },
-      select: ['id', 'ip'],
+      select: { id: true, ip: true },
     } as any);
 
     let updated = 0;
