@@ -469,6 +469,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
             })),
           },
         };
+      }
 
       case 'check_ip_reputation': {
         const ip = String(args.ip || '').trim();
