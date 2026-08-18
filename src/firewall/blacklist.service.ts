@@ -39,6 +39,25 @@ export class BlacklistService {
     username: string | null,
     threatData?: { abuseScore?: number; abuseCategories?: string; countryCode?: string },
   ): Promise<BlacklistEntry> {
+    const effectiveUsername = username || 'system';
+
+    // If threatData or countryCode is missing, attempt quick lookup
+    let finalCountryCode = threatData?.countryCode ?? null;
+    let finalAbuseScore = threatData?.abuseScore ?? null;
+    let finalAbuseCategories = threatData?.abuseCategories ?? null;
+
+    if (!finalCountryCode && ip) {
+      try {
+        const intel = await this.threatIntelService.checkIp(ip);
+        if (intel && intel.countryCode && intel.countryCode !== 'N/A' && intel.countryCode !== 'n/a') {
+          finalCountryCode = intel.countryCode;
+          if (finalAbuseScore === null) finalAbuseScore = intel.abuseScore;
+        }
+      } catch (err) {
+        // non-fatal
+      }
+    }
+
     // Check for ANY existing entry for this IP (regardless of active status)
     const anyExistingEntry = await this.blacklistRepository.findOne({
       where: { ip },
@@ -46,7 +65,12 @@ export class BlacklistService {
 
     if (anyExistingEntry) {
       if (anyExistingEntry.active) {
-        // Already active - return unchanged (idempotent)
+        // If missing country code, update it
+        if (!anyExistingEntry.countryCode && finalCountryCode) {
+          anyExistingEntry.countryCode = finalCountryCode;
+          if (finalAbuseScore !== null) anyExistingEntry.abuseScore = finalAbuseScore;
+          await this.blacklistRepository.save(anyExistingEntry);
+        }
         this.logger.log(`IP ${ip} is already blacklisted, returning existing entry`);
         return anyExistingEntry;
       } else {
@@ -62,19 +86,17 @@ export class BlacklistService {
         anyExistingEntry.active = true;
         anyExistingEntry.reason = reason;
         anyExistingEntry.source = source;
-        anyExistingEntry.addedBy = username ?? 'system';
+        anyExistingEntry.addedBy = effectiveUsername;
         anyExistingEntry.createdAt = new Date();
-        if (threatData) {
-          anyExistingEntry.abuseScore = threatData.abuseScore ?? null;
-          anyExistingEntry.abuseCategories = threatData.abuseCategories ?? null;
-          anyExistingEntry.countryCode = threatData.countryCode ?? null;
-        }
+        anyExistingEntry.abuseScore = finalAbuseScore ?? anyExistingEntry.abuseScore;
+        anyExistingEntry.abuseCategories = finalAbuseCategories ?? anyExistingEntry.abuseCategories;
+        anyExistingEntry.countryCode = finalCountryCode ?? anyExistingEntry.countryCode;
 
         const savedEntry = await this.blacklistRepository.save(anyExistingEntry);
         this.logger.log(`Re-activated blocked IP ${ip} (source: ${source}, reason: ${reason})`);
 
-        await this.auditService.log(userId, username, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
-        await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.ADD, ip, reason, username ?? 'system');
+        await this.auditService.log(userId, effectiveUsername, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
+        await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.ADD, ip, reason, effectiveUsername);
         return savedEntry;
       }
     }
@@ -92,19 +114,19 @@ export class BlacklistService {
       ip,
       reason,
       source,
-      addedBy: username ?? 'system',
+      addedBy: effectiveUsername,
       active: true,
-      abuseScore: threatData?.abuseScore ?? null,
-      abuseCategories: threatData?.abuseCategories ?? null,
-      countryCode: threatData?.countryCode ?? null,
+      abuseScore: finalAbuseScore,
+      abuseCategories: finalAbuseCategories,
+      countryCode: finalCountryCode,
     });
 
     const savedEntry = await this.blacklistRepository.save(entry);
-    this.logger.log(`Blocked IP ${ip} (source: ${source}, reason: ${reason})`);
+    this.logger.log(`Blocked IP ${ip} (source: ${source}, reason: ${reason}, country: ${finalCountryCode || 'N/A'})`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
-    await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.ADD, ip, reason, username ?? 'system');
+    await this.auditService.log(userId, effectiveUsername, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
+    await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.ADD, ip, reason, effectiveUsername);
 
     return savedEntry;
   }
@@ -216,16 +238,82 @@ export class BlacklistService {
   }
 
   /**
+   * Update country code for an IP if currently missing
+   */
+  async updateCountryCodeIfMissing(ip: string, countryCode: string): Promise<void> {
+    if (!countryCode || countryCode === 'N/A' || countryCode === 'n/a') return;
+    await this.blacklistRepository.update(
+      { ip, countryCode: IsNull() },
+      { countryCode },
+    );
+  }
+
+  /**
    * Get country statistics from blacklist entries
    * @returns Array of country codes with their counts
    */
   async getCountryStats(): Promise<{ countryCode: string; count: number }[]> {
     const entries = await this.blacklistRepository.find({
       where: { active: true },
-      select: { countryCode: true },
+      select: { id: true, ip: true, countryCode: true },
     } as any);
 
     const countryCounts: Record<string, number> = {};
+    const missingCountryEntries = entries.filter(
+      (e) => !e.countryCode || e.countryCode === 'N/A' || e.countryCode === 'n/a',
+    );
+
+    // If entries exist but country codes are missing, perform quick bulk backfill
+    if (missingCountryEntries.length > 0) {
+      try {
+        const threatEntries = await this.threatIntelService.getBlocklistDetails(90);
+        const map = new Map<string, { countryCode?: string; abuseScore?: number }>();
+        for (const item of threatEntries) {
+          if (item.countryCode) {
+            map.set(item.ipAddress, { countryCode: item.countryCode, abuseScore: item.abuseConfidenceScore });
+          }
+        }
+
+        for (const entry of missingCountryEntries) {
+          if (this.threatIntelService.isPrivateIp(entry.ip)) {
+            entry.countryCode = 'Local (LAN)';
+            await this.blacklistRepository.update(entry.id, { countryCode: 'Local (LAN)' });
+            continue;
+          }
+
+          const matched = map.get(entry.ip);
+          if (matched?.countryCode) {
+            entry.countryCode = matched.countryCode;
+            await this.blacklistRepository.update(entry.id, {
+              countryCode: matched.countryCode,
+              ...(matched.abuseScore ? { abuseScore: matched.abuseScore } : {}),
+            });
+          }
+        }
+
+        // For any remaining missing entries (up to 15), do individual check
+        const stillMissing = missingCountryEntries.filter(
+          (e) => !e.countryCode || e.countryCode === 'N/A' || e.countryCode === 'n/a',
+        ).slice(0, 15);
+
+        for (const entry of stillMissing) {
+          try {
+            const threatInfo = await this.threatIntelService.checkIp(entry.ip);
+            if (threatInfo && threatInfo.countryCode && threatInfo.countryCode !== 'N/A') {
+              entry.countryCode = threatInfo.countryCode;
+              await this.blacklistRepository.update(entry.id, {
+                countryCode: threatInfo.countryCode,
+                abuseScore: threatInfo.abuseScore,
+              });
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(`Failed to backfill country codes during getCountryStats: ${err?.message}`);
+      }
+    }
 
     for (const entry of entries) {
       if (entry.countryCode && entry.countryCode !== 'N/A' && entry.countryCode !== 'n/a') {
@@ -240,28 +328,61 @@ export class BlacklistService {
 
   /**
    * Backfill country codes for existing blacklist entries without country data
-   * This is a maintenance operation to update old entries with AbuseIPDB country data
+   * Uses fast bulk matching from AbuseIPDB threat feed first, then individual lookups
    * @returns Number of entries updated
    */
   async backfillCountryCodes(): Promise<number> {
-    const entriesWithoutCountry = await this.blacklistRepository.find({
-      where: { active: true, countryCode: IsNull() },
-      select: { id: true, ip: true },
-    } as any);
-
     let updated = 0;
-    for (const entry of entriesWithoutCountry) {
-      try {
-        const threatInfo = await this.threatIntelService.checkIp(entry.ip);
-        if (threatInfo && threatInfo.countryCode) {
+
+    try {
+      // 1. Fast bulk match from threat feed blocklist (1 HTTP call for 1000 IPs)
+      const threatEntries = await this.threatIntelService.getBlocklistDetails(90);
+      const map = new Map<string, { countryCode?: string; abuseScore?: number }>();
+      for (const item of threatEntries) {
+        if (item.countryCode) {
+          map.set(item.ipAddress, { countryCode: item.countryCode, abuseScore: item.abuseConfidenceScore });
+        }
+      }
+
+      const entriesWithoutCountry = await this.blacklistRepository.find({
+        where: { active: true, countryCode: IsNull() },
+        select: { id: true, ip: true },
+      } as any);
+
+      for (const entry of entriesWithoutCountry) {
+        const matched = map.get(entry.ip);
+        if (matched?.countryCode) {
           await this.blacklistRepository.update(entry.id, {
-            countryCode: threatInfo.countryCode,
+            countryCode: matched.countryCode,
+            ...(matched.abuseScore ? { abuseScore: matched.abuseScore } : {}),
           });
           updated++;
         }
-      } catch (error) {
-        console.error(`Failed to fetch country for ${entry.ip}:`, error);
       }
+
+      // 2. For remaining unmatched entries, check individually up to 20
+      const remaining = await this.blacklistRepository.find({
+        where: { active: true, countryCode: IsNull() },
+        take: 20,
+        select: { id: true, ip: true },
+      } as any);
+
+      for (const entry of remaining) {
+        try {
+          const threatInfo = await this.threatIntelService.checkIp(entry.ip);
+          if (threatInfo && threatInfo.countryCode && threatInfo.countryCode !== 'N/A') {
+            await this.blacklistRepository.update(entry.id, {
+              countryCode: threatInfo.countryCode,
+              abuseScore: threatInfo.abuseScore,
+            });
+            updated++;
+          }
+        } catch (error) {
+          // ignore
+        }
+      }
+    } catch (error: any) {
+      this.logger.error(`backfillCountryCodes failed: ${error.message}`);
     }
 
     return updated;

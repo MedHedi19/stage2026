@@ -24,20 +24,24 @@ export class ThreatFeedScheduler {
     this.logger.log('Starting threat feed sync...');
     
     try {
-      // Get high-confidence threat IPs from AbuseIPDB
-      const threatIps = await this.threatIntelService.getBlocklist(95);
+      // Get high-confidence threat IPs from AbuseIPDB with country and score details
+      const threatEntries = await this.threatIntelService.getBlocklistDetails(95);
       
-      if (!threatIps || threatIps.length === 0) {
+      if (!threatEntries || threatEntries.length === 0) {
         this.logger.log('No threat IPs found in feed');
         return { added: 0, skipped: 0, total: 0 };
       }
 
-      this.logger.log(`Processing ${threatIps.length} threat IPs from feed`);
+      this.logger.log(`Processing ${threatEntries.length} threat IPs from feed`);
 
       let added = 0;
       let skipped = 0;
 
-      for (const ip of threatIps) {
+      for (const entry of threatEntries) {
+        const ip = entry.ipAddress;
+        const countryCode = entry.countryCode;
+        const abuseScore = entry.abuseConfidenceScore ?? 95;
+
         try {
           // Skip if whitelisted
           const isWhitelisted = await this.whitelistService.isWhitelisted(ip);
@@ -47,25 +51,28 @@ export class ThreatFeedScheduler {
             continue;
           }
 
-          // Skip if already blacklisted
+          // If already blacklisted, ensure country code is updated if missing
           const isBlacklisted = await this.blacklistService.isBlacklisted(ip);
           if (isBlacklisted) {
+            if (countryCode) {
+              await this.blacklistService.updateCountryCodeIfMissing(ip, countryCode);
+            }
             this.logger.log(`Skipping already blacklisted IP: ${ip}`);
             skipped++;
             continue;
           }
 
-          // Block the IP with threat intel data
+          // Block the IP with threat intel data and username 'system'
           await this.blacklistService.block(
             ip,
             'AbuseIPDB threat feed (confidence >= 95)',
             BlockSource.AUTO,
             null,
-            null,
-            { abuseScore: 95, abuseCategories: undefined, countryCode: undefined },
+            'system',
+            { abuseScore, abuseCategories: undefined, countryCode },
           );
 
-          this.logger.log(`Added IP to blacklist from threat feed: ${ip}`);
+          this.logger.log(`Added IP to blacklist from threat feed: ${ip} (Country: ${countryCode || 'N/A'})`);
           added++;
         } catch (error: any) {
           this.logger.error(`Failed to process IP ${ip}: ${error.message}`);
@@ -73,8 +80,8 @@ export class ThreatFeedScheduler {
         }
       }
 
-      this.logger.log(`Threat feed sync completed: ${added} added, ${skipped} skipped, ${threatIps.length} total`);
-      return { added, skipped, total: threatIps.length };
+      this.logger.log(`Threat feed sync completed: ${added} added, ${skipped} skipped, ${threatEntries.length} total`);
+      return { added, skipped, total: threatEntries.length };
     } catch (error: any) {
       this.logger.error(`Threat feed sync failed: ${error.message}`);
       throw error;

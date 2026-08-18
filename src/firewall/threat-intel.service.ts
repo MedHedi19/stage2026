@@ -3,6 +3,12 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { lastValueFrom } from 'rxjs';
 
+export interface ThreatBlocklistEntry {
+  ipAddress: string;
+  countryCode?: string;
+  abuseConfidenceScore?: number;
+}
+
 export interface ThreatIntelResult {
   abuseScore: number;
   totalReports: number;
@@ -25,7 +31,31 @@ export class ThreatIntelService {
     }
   }
 
+  isPrivateIp(ip: string): boolean {
+    if (!ip) return false;
+    const cleanIp = ip.trim();
+    if (cleanIp === 'localhost' || cleanIp.startsWith('127.')) return true;
+    if (cleanIp.startsWith('10.')) return true;
+    if (cleanIp.startsWith('192.168.')) return true;
+    if (cleanIp.startsWith('169.254.')) return true; // Link-local / APIPA (e.g. VM networks)
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(cleanIp)) return true;
+    if (cleanIp === '::1' || cleanIp.startsWith('fe80:') || cleanIp.startsWith('fc00:')) return true;
+    return false;
+  }
+
   async checkIp(ip: string): Promise<ThreatIntelResult | null> {
+    if (!ip) return null;
+
+    // Handle local/private IPs immediately
+    if (this.isPrivateIp(ip)) {
+      return {
+        abuseScore: 0,
+        totalReports: 0,
+        categories: [],
+        countryCode: 'Local (LAN)',
+      };
+    }
+
     if (!this.apiKey) {
       this.logger.warn('AbuseIPDB API key not configured, skipping IP check');
       return null;
@@ -46,7 +76,7 @@ export class ThreatIntelService {
         }),
       );
 
-      const data = response.data.data;
+      const data = response.data?.data;
       if (!data) {
         this.logger.warn(`AbuseIPDB returned empty data for IP ${ip}`);
         return null;
@@ -74,7 +104,7 @@ export class ThreatIntelService {
     }
   }
 
-  async getBlocklist(confidenceMinimum: number = 90): Promise<string[]> {
+  async getBlocklistDetails(confidenceMinimum: number = 90): Promise<ThreatBlocklistEntry[]> {
     if (!this.apiKey) {
       this.logger.warn('AbuseIPDB API key not configured, skipping blocklist fetch');
       return [];
@@ -95,16 +125,27 @@ export class ThreatIntelService {
         }),
       );
 
-      const data = response.data.data;
+      const data = response.data?.data;
       if (!data || !Array.isArray(data)) {
         this.logger.warn('AbuseIPDB returned invalid blocklist data');
         return [];
       }
 
-      return data.map((entry: any) => entry.ipAddress).filter(Boolean);
+      return data
+        .filter((entry: any) => Boolean(entry?.ipAddress))
+        .map((entry: any) => ({
+          ipAddress: entry.ipAddress,
+          countryCode: entry.countryCode && entry.countryCode !== 'N/A' && entry.countryCode !== 'n/a' ? entry.countryCode : undefined,
+          abuseConfidenceScore: entry.abuseConfidenceScore || confidenceMinimum,
+        }));
     } catch (error: any) {
       this.logger.warn(`AbuseIPDB blocklist fetch failed: ${error.message}`);
       return [];
     }
+  }
+
+  async getBlocklist(confidenceMinimum: number = 90): Promise<string[]> {
+    const details = await this.getBlocklistDetails(confidenceMinimum);
+    return details.map((entry) => entry.ipAddress);
   }
 }
