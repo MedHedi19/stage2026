@@ -38,6 +38,6 @@ export class BlacklistEntry {
   @Column({ nullable: true, type: 'varchar', length: 255 })
   abuseCategories: string | null = null;
 
-  @Column({ nullable: true, type: 'varchar', length: 10 })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   countryCode: string | null = null;
 }

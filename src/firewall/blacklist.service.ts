@@ -67,9 +67,13 @@ export class BlacklistService {
       if (anyExistingEntry.active) {
         // If missing country code, update it
         if (!anyExistingEntry.countryCode && finalCountryCode) {
-          anyExistingEntry.countryCode = finalCountryCode;
-          if (finalAbuseScore !== null) anyExistingEntry.abuseScore = finalAbuseScore;
-          await this.blacklistRepository.save(anyExistingEntry);
+          try {
+            anyExistingEntry.countryCode = finalCountryCode;
+            if (finalAbuseScore !== null) anyExistingEntry.abuseScore = finalAbuseScore;
+            await this.blacklistRepository.save(anyExistingEntry);
+          } catch (err: any) {
+            this.logger.warn(`Failed to update threatData for existing active IP ${ip}: ${err.message}`);
+          }
         }
         this.logger.log(`IP ${ip} is already blacklisted, returning existing entry`);
         return anyExistingEntry;
@@ -82,18 +86,27 @@ export class BlacklistService {
           throw error;
         }
 
-        // Update existing row instead of creating new one
+        // Update existing row core fields first
         anyExistingEntry.active = true;
         anyExistingEntry.reason = reason;
         anyExistingEntry.source = source;
         anyExistingEntry.addedBy = effectiveUsername;
         anyExistingEntry.createdAt = new Date();
-        anyExistingEntry.abuseScore = finalAbuseScore ?? anyExistingEntry.abuseScore;
-        anyExistingEntry.abuseCategories = finalAbuseCategories ?? anyExistingEntry.abuseCategories;
-        anyExistingEntry.countryCode = finalCountryCode ?? anyExistingEntry.countryCode;
 
-        const savedEntry = await this.blacklistRepository.save(anyExistingEntry);
+        let savedEntry = await this.blacklistRepository.save(anyExistingEntry);
         this.logger.log(`Re-activated blocked IP ${ip} (source: ${source}, reason: ${reason})`);
+
+        // Separate threatData save step
+        if (finalAbuseScore !== null || finalAbuseCategories !== null || finalCountryCode !== null) {
+          try {
+            savedEntry.abuseScore = finalAbuseScore ?? savedEntry.abuseScore;
+            savedEntry.abuseCategories = finalAbuseCategories ?? savedEntry.abuseCategories;
+            savedEntry.countryCode = finalCountryCode ?? savedEntry.countryCode;
+            savedEntry = await this.blacklistRepository.save(savedEntry);
+          } catch (err: any) {
+            this.logger.warn(`Failed to update threatData for re-activated IP ${ip}: ${err.message}`);
+          }
+        }
 
         await this.auditService.log(userId, effectiveUsername, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
         await this.historyService.record(FirewallListType.BLACKLIST, FirewallAction.ADD, ip, reason, effectiveUsername);
@@ -109,20 +122,29 @@ export class BlacklistService {
       throw error; // Rethrow - do NOT save DB row if firewall fails
     }
 
-    // Save to database
+    // Save core block row immediately
     const entry = this.blacklistRepository.create({
       ip,
       reason,
       source,
       addedBy: effectiveUsername,
       active: true,
-      abuseScore: finalAbuseScore,
-      abuseCategories: finalAbuseCategories,
-      countryCode: finalCountryCode,
     });
 
-    const savedEntry = await this.blacklistRepository.save(entry);
-    this.logger.log(`Blocked IP ${ip} (source: ${source}, reason: ${reason}, country: ${finalCountryCode || 'N/A'})`);
+    let savedEntry = await this.blacklistRepository.save(entry);
+    this.logger.log(`Blocked IP ${ip} (source: ${source}, reason: ${reason})`);
+
+    // Separate threatData save step
+    if (finalAbuseScore !== null || finalAbuseCategories !== null || finalCountryCode !== null) {
+      try {
+        savedEntry.abuseScore = finalAbuseScore;
+        savedEntry.abuseCategories = finalAbuseCategories;
+        savedEntry.countryCode = finalCountryCode;
+        savedEntry = await this.blacklistRepository.save(savedEntry);
+      } catch (err: any) {
+        this.logger.warn(`Failed to save threatData for blocked IP ${ip}: ${err.message}`);
+      }
+    }
 
     // Audit log
     await this.auditService.log(userId, effectiveUsername, 'Add to Blacklist', `${ip} - Reason: ${reason}`, ip);
