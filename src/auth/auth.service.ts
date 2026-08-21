@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/entities/user.entity';
@@ -57,7 +61,7 @@ export class AuthService {
       mfaEnabled: false,
     };
     const accessToken = this.jwtService.sign(payload);
-    
+
     return {
       mfaRequired: false,
       mfaSetupRequired: true,
@@ -71,8 +75,6 @@ export class AuthService {
       },
     };
   }
-
-
 
   generateAccessToken(user: any): string {
     const payload = {
@@ -88,7 +90,11 @@ export class AuthService {
   async setupMfa(userId: number) {
     const user = await this.usersService.findOne(userId);
     const secret = authenticator.generateSecret();
-    const otpauthUrl = authenticator.keyuri(user.username, 'IDS-IPS-Intelligent', secret);
+    const otpauthUrl = authenticator.keyuri(
+      user.username,
+      'IDS-IPS-Intelligent',
+      secret,
+    );
 
     await this.usersService.update(userId, { mfaSecret: secret });
 
@@ -120,7 +126,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid verification code');
     }
 
-    const { user: updatedUser } = await this.usersService.update(userId, { mfaEnabled: true });
+    const { user: updatedUser } = await this.usersService.update(userId, {
+      mfaEnabled: true,
+    });
 
     return {
       success: true,

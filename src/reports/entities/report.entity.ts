@@ -1,4 +1,11 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { ReportType } from '../report-types.enum';
 
@@ -22,7 +29,7 @@ export class Report {
   @Column({
     type: 'enum',
     enum: ReportType,
-    default: ReportType.EXECUTIVE_SUMMARY
+    default: ReportType.EXECUTIVE_SUMMARY,
   })
   reportType: ReportType = ReportType.EXECUTIVE_SUMMARY;
 

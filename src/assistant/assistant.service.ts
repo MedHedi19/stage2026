@@ -53,7 +53,7 @@ export class AssistantService {
 
   private getSystemPrompt(language: string = 'fr'): string {
     const isFrench = language === 'fr';
-    
+
     if (isFrench) {
       return `
 Tu es l'assistant SOC interactif de SentinelOps. Tu aides les analystes à investiguer, réagir et documenter les incidents.
@@ -66,7 +66,7 @@ OUTILS DISPONIBLES (appelle-les selon l'intention, pas selon des mots-clés) :
 - purge_blacklist / purge_whitelist : vider une liste (confirmed=true seulement après confirmation explicite)
 - get_firewall_history : historique des opérations blacklist/whitelist (qui a bloqué/débloqué, quand, pourquoi). Peut filtrer par liste (blacklist/whitelist) et limiter le nombre d'entrées.
 - generate_report : exporter un rapport PDF/Excel (types : executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
-- check_ip_reputation : vérifier la réputation, le score de menace multi-source (AbuseIPDB, VirusTotal, AlienVault, IPQS), la localisation géographique (pays, ville/town, région) et le fournisseur/ISP d'une adresse IP
+- check_ip_reputation : vérifier la réputation, le score de menace multi-source (AbuseIPDB, VirusTotal, AlienVault, GreyNoise), la localisation géographique (pays, ville/town, région) et le fournisseur/ISP d'une adresse IP
 - sync_threat_feed : synchroniser automatiquement le flux de menaces AbuseIPDB (IPs à haute confiance ≥95%)
 - get_country_stats : obtenir les statistiques géographiques des IP blacklistées (top pays, distribution géographique)
 
@@ -94,7 +94,7 @@ AVAILABLE TOOLS (call them based on intent, not keywords):
 - purge_blacklist / purge_whitelist: clear a list (confirmed=true only after explicit confirmation)
 - get_firewall_history: history of blacklist/whitelist operations (who blocked/unblocked, when, why). Can filter by list (blacklist/whitelist) and limit number of entries.
 - generate_report: export a PDF/Excel report (types: executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
-- check_ip_reputation: check multi-source IP reputation, threat score (AbuseIPDB, VirusTotal, AlienVault, IPQS), geographic location (country, city/town, region), and ISP
+- check_ip_reputation: check multi-source IP reputation, threat score (AbuseIPDB, VirusTotal, AlienVault, GreyNoise), geographic location (country, city/town, region), and ISP
 - sync_threat_feed: automatically sync AbuseIPDB threat feed (high confidence IPs ≥95%)
 - get_country_stats: get geographic statistics of blacklisted IPs (top countries, geographic distribution)
 
@@ -118,16 +118,24 @@ BEHAVIOR:
       let alert: any = null;
 
       try {
-        const directAlerts = await this.wazuhService.fetchRecentAlerts({ id: alertId, limit: 1 });
+        const directAlerts = await this.wazuhService.fetchRecentAlerts({
+          id: alertId,
+          limit: 1,
+        });
         if (directAlerts && directAlerts.length > 0) {
           alert = directAlerts[0];
         }
       } catch (directError) {
-        console.warn(`[Assistant] Direct alert query failed for ID ${alertId}:`, (directError as Error).message);
+        console.warn(
+          `[Assistant] Direct alert query failed for ID ${alertId}:`,
+          (directError as Error).message,
+        );
       }
 
       if (!alert) {
-        const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 1000 });
+        const alerts = await this.wazuhService.fetchRecentAlerts({
+          limit: 1000,
+        });
         alert = alerts.find((a) => a.rule?.id === alertId || a.id === alertId);
       }
 
@@ -156,7 +164,10 @@ Alerte de sécurité (Suricata/Wazuh) :
 
   private isValidIpv4(ip: string): boolean {
     const parts = ip.split('.').map((part) => Number(part));
-    return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255);
+    return (
+      parts.length === 4 &&
+      parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)
+    );
   }
 
   private normalizeIps(raw: unknown): { ips: string[]; error?: string } {
@@ -164,9 +175,14 @@ Alerte de sécurité (Suricata/Wazuh) :
       return { ips: [], error: 'Aucune adresse IP fournie.' };
     }
 
-    const ips = [...new Set(raw.map(String).filter((ip) => this.isValidIpv4(ip)))];
+    const ips = [
+      ...new Set(raw.map(String).filter((ip) => this.isValidIpv4(ip))),
+    ];
     if (ips.length === 0) {
-      return { ips: [], error: 'Adresses IP invalides. Fournissez des IPv4 valides.' };
+      return {
+        ips: [],
+        error: 'Adresses IP invalides. Fournissez des IPv4 valides.',
+      };
     }
 
     return { ips };
@@ -229,7 +245,10 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
   private async executeToolCall(
     call: FunctionCall,
     ctx: ToolExecutionContext,
-  ): Promise<{ result: Record<string, unknown>; mutation?: AssistantMutation }> {
+  ): Promise<{
+    result: Record<string, unknown>;
+    mutation?: AssistantMutation;
+  }> {
     // Viewers may read / analyse but cannot mutate firewall lists
     if (
       ctx.userRole === UserRole.VIEWER &&
@@ -253,7 +272,10 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         }
 
         const context = await this.fetchAlertContext(alertId);
-        if (context.startsWith('Aucun détail') || context.startsWith('Impossible')) {
+        if (
+          context.startsWith('Aucun détail') ||
+          context.startsWith('Impossible')
+        ) {
           return { result: { success: false, alertId, error: context } };
         }
 
@@ -293,14 +315,22 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         const { ips, error } = this.normalizeIps(args.ips);
         if (error) return { result: { success: false, error } };
 
-        const reason = String(args.reason || `Bloqué via assistant: ${ctx.userMessage}`);
+        const reason = String(
+          args.reason || `Bloqué via assistant: ${ctx.userMessage}`,
+        );
         const affectedIps: string[] = [];
 
         for (const ip of ips) {
           if (await this.whitelistService.isWhitelisted(ip)) {
             await this.whitelistService.remove(ip, ctx.userId, ctx.username);
           }
-          await this.blacklistService.block(ip, reason, BlockSource.MANUAL, ctx.userId, ctx.username);
+          await this.blacklistService.block(
+            ip,
+            reason,
+            BlockSource.MANUAL,
+            ctx.userId,
+            ctx.username,
+          );
           affectedIps.push(ip);
         }
 
@@ -328,7 +358,9 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         const { ips, error } = this.normalizeIps(args.ips);
         if (error) return { result: { success: false, error } };
 
-        const reason = String(args.reason || `Ajoutée via assistant: ${ctx.userMessage}`);
+        const reason = String(
+          args.reason || `Ajoutée via assistant: ${ctx.userMessage}`,
+        );
 
         for (const ip of ips) {
           if (await this.blacklistService.isBlacklisted(ip)) {
@@ -363,12 +395,16 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
             result: {
               success: false,
               needsConfirmation: true,
-              message: 'Demandez confirmation à l\'utilisateur avant de purger toute la blacklist.',
+              message:
+                "Demandez confirmation à l'utilisateur avant de purger toute la blacklist.",
             },
           };
         }
 
-        const ips = await this.blacklistService.purgeAll(ctx.userId, ctx.username);
+        const ips = await this.blacklistService.purgeAll(
+          ctx.userId,
+          ctx.username,
+        );
         return {
           result: {
             success: true,
@@ -386,12 +422,16 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
             result: {
               success: false,
               needsConfirmation: true,
-              message: 'Demandez confirmation à l\'utilisateur avant de purger toute la whitelist.',
+              message:
+                "Demandez confirmation à l'utilisateur avant de purger toute la whitelist.",
             },
           };
         }
 
-        const ips = await this.whitelistService.purgeAll(ctx.userId, ctx.username);
+        const ips = await this.whitelistService.purgeAll(
+          ctx.userId,
+          ctx.username,
+        );
         return {
           result: {
             success: true,
@@ -410,7 +450,12 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         const endDate = String(args.endDate || '');
 
         if (!['pdf', 'excel'].includes(format)) {
-          return { result: { success: false, error: 'Format invalide. Utilisez pdf ou excel.' } };
+          return {
+            result: {
+              success: false,
+              error: 'Format invalide. Utilisez pdf ou excel.',
+            },
+          };
         }
 
         if (!Object.values(ReportType).includes(reportType)) {
@@ -422,8 +467,18 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
           };
         }
 
-        if (!startDate || !endDate || Number.isNaN(Date.parse(startDate)) || Number.isNaN(Date.parse(endDate))) {
-          return { result: { success: false, error: 'Dates startDate/endDate ISO 8601 requises.' } };
+        if (
+          !startDate ||
+          !endDate ||
+          Number.isNaN(Date.parse(startDate)) ||
+          Number.isNaN(Date.parse(endDate))
+        ) {
+          return {
+            result: {
+              success: false,
+              error: 'Dates startDate/endDate ISO 8601 requises.',
+            },
+          };
         }
 
         const reportParams: ReportParams = {
@@ -447,14 +502,20 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
       }
 
       case 'get_firewall_history': {
-        const rawListType = args.listType ? String(args.listType).toLowerCase() : undefined;
+        const rawListType = args.listType
+          ? String(args.listType).toLowerCase()
+          : undefined;
         let listType: FirewallListType | undefined;
 
         if (rawListType === 'blacklist') listType = FirewallListType.BLACKLIST;
-        else if (rawListType === 'whitelist') listType = FirewallListType.WHITELIST;
+        else if (rawListType === 'whitelist')
+          listType = FirewallListType.WHITELIST;
 
         const limit = args.limit ? Number(args.limit) : undefined;
-        const entries = await this.firewallHistoryService.getHistory(listType, limit);
+        const entries = await this.firewallHistoryService.getHistory(
+          listType,
+          limit,
+        );
 
         return {
           result: {
@@ -488,8 +549,19 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
               ip,
               compositeScore: score,
               abuseScore: score,
-              verdict: threatInfo.verdict || (score >= 60 ? 'critical' : score >= 25 ? 'suspicious' : 'clean'),
-              severity: score >= 60 ? 'high / critical' : score >= 25 ? 'medium / suspicious' : 'low / clean',
+              verdict:
+                threatInfo.verdict ||
+                (score >= 60
+                  ? 'critical'
+                  : score >= 25
+                    ? 'suspicious'
+                    : 'clean'),
+              severity:
+                score >= 60
+                  ? 'high / critical'
+                  : score >= 25
+                    ? 'medium / suspicious'
+                    : 'low / clean',
               countryCode: threatInfo.countryCode,
               countryName: threatInfo.countryName,
               city: threatInfo.city,
@@ -530,7 +602,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         return {
           result: {
             success: true,
-            countries: countryStats.map(stat => ({
+            countries: countryStats.map((stat) => ({
               country: stat.countryCode,
               count: stat.count,
             })),
@@ -541,11 +613,15 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
       }
 
       default:
-        return { result: { success: false, error: `Outil inconnu: ${call.name}` } };
+        return {
+          result: { success: false, error: `Outil inconnu: ${call.name}` },
+        };
     }
   }
 
-  private parseLogMetadata(metadata: string | null): { lastReport?: ReportParams } | null {
+  private parseLogMetadata(
+    metadata: string | null,
+  ): { lastReport?: ReportParams } | null {
     if (!metadata) return null;
     try {
       return JSON.parse(metadata);
@@ -591,13 +667,17 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
     }
 
     const message =
-      contextLines.length > 0 ? `${contextLines.join('\n')}\n${userMessage}` : userMessage;
+      contextLines.length > 0
+        ? `${contextLines.join('\n')}\n${userMessage}`
+        : userMessage;
 
     contents.push({ role: 'user', parts: [{ text: message }] });
     return contents;
   }
 
-  private mergeMutations(mutations: AssistantMutation[]): AssistantMutation | undefined {
+  private mergeMutations(
+    mutations: AssistantMutation[],
+  ): AssistantMutation | undefined {
     if (mutations.length === 0) return undefined;
 
     const ipMutations = mutations.filter((m) => m.type === 'ip-list-changed');
@@ -628,7 +708,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
     });
 
     const mutations: AssistantMutation[] = [];
-    let currentContents = [...contents];
+    const currentContents = [...contents];
     const maxRounds = 6;
 
     for (let round = 0; round < maxRounds; round++) {
@@ -638,7 +718,11 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
 
       if (!functionCalls || functionCalls.length === 0) {
         return {
-          reply: response.text() || (isFrench ? 'Je n\'ai pas pu formuler de réponse.' : 'I could not formulate a response.'),
+          reply:
+            response.text() ||
+            (isFrench
+              ? "Je n'ai pas pu formuler de réponse."
+              : 'I could not formulate a response.'),
           mutation: this.mergeMutations(mutations),
         };
       }
@@ -655,7 +739,10 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
 
       const functionResponseParts: FunctionResponsePart[] = [];
       for (const call of functionCalls) {
-        const { result: toolResult, mutation } = await this.executeToolCall(call, ctx);
+        const { result: toolResult, mutation } = await this.executeToolCall(
+          call,
+          ctx,
+        );
         if (mutation) mutations.push(mutation);
         functionResponseParts.push({
           functionResponse: {
@@ -669,12 +756,18 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
     }
 
     return {
-      reply: 'Je n\'ai pas pu finaliser la réponse. Pouvez-vous reformuler votre demande ?',
+      reply:
+        "Je n'ai pas pu finaliser la réponse. Pouvez-vous reformuler votre demande ?",
       mutation: this.mergeMutations(mutations),
     };
   }
 
-  async chat(userId: number, username: string, userRole: string, dto: ChatRequestDto) {
+  async chat(
+    userId: number,
+    username: string,
+    userRole: string,
+    dto: ChatRequestDto,
+  ) {
     const conversationId = dto.conversationId || randomUUID();
     const history = dto.conversationId
       ? await this.conversationLogRepo.find({
@@ -684,7 +777,12 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
       : [];
 
     const lastReport = this.resolveLastReport(history, dto.lastReport);
-    const contents = this.buildContents(history, dto.message, dto.alertId, lastReport);
+    const contents = this.buildContents(
+      history,
+      dto.message,
+      dto.alertId,
+      lastReport,
+    );
     const ctx: ToolExecutionContext = {
       userId,
       username,
@@ -716,13 +814,21 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
       };
     } catch (error) {
       console.error('Error calling Gemini API:', error);
-      
+
       // Check for quota exceeded error (429)
-      if (error?.status === 429 || error?.message?.includes('429') || error?.message?.includes('quota')) {
-        throw new InternalServerErrorException('Free trial quota exceeded. Please upgrade your Gemini API plan or wait for the daily quota reset.');
+      if (
+        error?.status === 429 ||
+        error?.message?.includes('429') ||
+        error?.message?.includes('quota')
+      ) {
+        throw new InternalServerErrorException(
+          'Free trial quota exceeded. Please upgrade your Gemini API plan or wait for the daily quota reset.',
+        );
       }
-      
-      throw new InternalServerErrorException('Erreur lors de la communication avec le service IA');
+
+      throw new InternalServerErrorException(
+        'Erreur lors de la communication avec le service IA',
+      );
     }
   }
 

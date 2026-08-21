@@ -36,13 +36,13 @@ export interface AlienVaultSourceResult {
   countryCode?: string;
 }
 
-export interface IpQualityScoreSourceResult {
+export interface GreyNoiseSourceResult {
   score: number;
-  isProxy: boolean;
-  isVpn: boolean;
-  isTor: boolean;
-  recentAbuse: boolean;
-  botStatus?: boolean;
+  classification: string;
+  name: string;
+  link: string;
+  last_seen: string;
+  ip?: string;
   isp?: string;
   countryCode?: string;
   city?: string;
@@ -66,7 +66,7 @@ export interface ThreatIntelResult {
     abuseipdb?: AbuseIpDbSourceResult;
     virusTotal?: VirusTotalSourceResult;
     alienVault?: AlienVaultSourceResult;
-    ipQualityScore?: IpQualityScoreSourceResult;
+    greyNoise?: GreyNoiseSourceResult;
   };
 }
 
@@ -76,18 +76,22 @@ export class ThreatIntelService {
   private readonly abuseApiKey: string;
   private readonly vtApiKey: string;
   private readonly otxApiKey: string;
-  private readonly ipqsApiKey: string;
+  private readonly greyNoiseApiKey: string;
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
   ) {
-    this.abuseApiKey = this.configService.get<string>('ABUSEIPDB_API_KEY') || '';
+    this.abuseApiKey =
+      this.configService.get<string>('ABUSEIPDB_API_KEY') || '';
     this.vtApiKey = this.configService.get<string>('VIRUSTOTAL_API_KEY') || '';
     this.otxApiKey = this.configService.get<string>('OTX_API_KEY') || '';
-    this.ipqsApiKey = this.configService.get<string>('IPQS_API_KEY') || '';
+    this.greyNoiseApiKey =
+      this.configService.get<string>('GREYNOISE_API_KEY') || '';
 
-    this.logger.log(`Threat Intel initialized with providers: [AbuseIPDB: ${Boolean(this.abuseApiKey)}, VirusTotal: ${Boolean(this.vtApiKey)}, OTX: ${Boolean(this.otxApiKey)}, IPQS: ${Boolean(this.ipqsApiKey)}]`);
+    this.logger.log(
+      `Threat Intel initialized with providers: [AbuseIPDB: ${Boolean(this.abuseApiKey)}, VirusTotal: ${Boolean(this.vtApiKey)}, OTX: ${Boolean(this.otxApiKey)}, GreyNoise: ${Boolean(this.greyNoiseApiKey)}]`,
+    );
   }
 
   isPrivateIp(ip: string): boolean {
@@ -98,11 +102,18 @@ export class ThreatIntelService {
     if (cleanIp.startsWith('192.168.')) return true;
     if (cleanIp.startsWith('169.254.')) return true; // Link-local / APIPA
     if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(cleanIp)) return true;
-    if (cleanIp === '::1' || cleanIp.startsWith('fe80:') || cleanIp.startsWith('fc00:')) return true;
+    if (
+      cleanIp === '::1' ||
+      cleanIp.startsWith('fe80:') ||
+      cleanIp.startsWith('fc00:')
+    )
+      return true;
     return false;
   }
 
-  private async checkAbuseIpDb(ip: string): Promise<AbuseIpDbSourceResult | null> {
+  private async checkAbuseIpDb(
+    ip: string,
+  ): Promise<AbuseIpDbSourceResult | null> {
     if (!this.abuseApiKey) return null;
 
     try {
@@ -146,18 +157,23 @@ export class ThreatIntelService {
     }
   }
 
-  private async checkVirusTotal(ip: string): Promise<VirusTotalSourceResult | null> {
+  private async checkVirusTotal(
+    ip: string,
+  ): Promise<VirusTotalSourceResult | null> {
     if (!this.vtApiKey) return null;
 
     try {
       const response = await lastValueFrom(
-        this.httpService.get(`https://www.virustotal.com/api/v3/ip_addresses/${encodeURIComponent(ip)}`, {
-          headers: {
-            'x-apikey': this.vtApiKey,
-            Accept: 'application/json',
+        this.httpService.get(
+          `https://www.virustotal.com/api/v3/ip_addresses/${encodeURIComponent(ip)}`,
+          {
+            headers: {
+              'x-apikey': this.vtApiKey,
+              Accept: 'application/json',
+            },
+            timeout: 8000,
           },
-          timeout: 8000,
-        }),
+        ),
       );
 
       const attributes = response.data?.data?.attributes;
@@ -188,21 +204,28 @@ export class ThreatIntelService {
         country: attributes.country,
       };
     } catch (error: any) {
-      this.logger.warn(`VirusTotal check failed for IP ${ip}: ${error.message}`);
+      this.logger.warn(
+        `VirusTotal check failed for IP ${ip}: ${error.message}`,
+      );
       return null;
     }
   }
 
-  private async checkAlienVault(ip: string): Promise<AlienVaultSourceResult | null> {
+  private async checkAlienVault(
+    ip: string,
+  ): Promise<AlienVaultSourceResult | null> {
     try {
       const headers: Record<string, string> = { Accept: 'application/json' };
       if (this.otxApiKey) headers['X-OTX-API-KEY'] = this.otxApiKey;
 
       const response = await lastValueFrom(
-        this.httpService.get(`https://otx.alienvault.com/api/v1/indicators/IPv4/${encodeURIComponent(ip)}/general`, {
-          headers,
-          timeout: 8000,
-        }),
+        this.httpService.get(
+          `https://otx.alienvault.com/api/v1/indicators/IPv4/${encodeURIComponent(ip)}/general`,
+          {
+            headers,
+            timeout: 8000,
+          },
+        ),
       );
 
       const data = response.data;
@@ -229,41 +252,57 @@ export class ThreatIntelService {
         countryCode: data.country_code,
       };
     } catch (error: any) {
-      this.logger.warn(`AlienVault OTX check failed for IP ${ip}: ${error.message}`);
+      this.logger.warn(
+        `AlienVault OTX check failed for IP ${ip}: ${error.message}`,
+      );
       return null;
     }
   }
 
-  private async checkIpQualityScore(ip: string): Promise<IpQualityScoreSourceResult | null> {
-    if (!this.ipqsApiKey) return null;
-
+  private async checkGreyNoise(
+    ip: string,
+  ): Promise<GreyNoiseSourceResult | null> {
     try {
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (this.greyNoiseApiKey)
+        headers['Authorization'] = `Bearer ${this.greyNoiseApiKey}`;
+
       const response = await lastValueFrom(
-        this.httpService.get(`https://ipqualityscore.com/api/json/ip/${this.ipqsApiKey}/${encodeURIComponent(ip)}`, {
-          params: { strictness: 1 },
-          timeout: 8000,
-        }),
+        this.httpService.get(
+          `https://api.greynoise.io/v3/community/${encodeURIComponent(ip)}`,
+          {
+            headers,
+            timeout: 8000,
+          },
+        ),
       );
 
       const data = response.data;
-      if (!data || data.success === false) return null;
+      if (!data) return null;
 
-      const score = Math.min(100, Math.max(0, data.fraud_score || 0));
+      // GreyNoise classification: malicious, benign, unknown
+      const classification = data.classification || 'unknown';
+
+      // Normalization: malicious = 100%, benign = 0%, unknown = 20%
+      let score = 0;
+      if (classification === 'malicious') score = 100;
+      else if (classification === 'benign') score = 0;
+      else if (classification === 'unknown') score = 20;
 
       return {
         score,
-        isProxy: Boolean(data.proxy),
-        isVpn: Boolean(data.vpn || data.active_vpn),
-        isTor: Boolean(data.tor || data.active_tor),
-        recentAbuse: Boolean(data.recent_abuse),
-        botStatus: Boolean(data.bot_status),
-        isp: data.ISP,
-        countryCode: data.country_code,
-        city: data.city || undefined,
-        region: data.region || undefined,
+        classification,
+        name: data.name || 'Unknown',
+        link: data.link || '',
+        last_seen: data.last_seen || '',
+        ip: data.ip,
+        isp: data.metadata?.isp,
+        countryCode: data.metadata?.country_code,
+        city: data.metadata?.city,
+        region: data.metadata?.region,
       };
     } catch (error: any) {
-      this.logger.warn(`IPQualityScore check failed for IP ${ip}: ${error.message}`);
+      this.logger.warn(`GreyNoise check failed for IP ${ip}: ${error.message}`);
       return null;
     }
   }
@@ -288,11 +327,11 @@ export class ThreatIntelService {
     }
 
     // Run active providers in parallel
-    const [abuseRes, vtRes, otxRes, ipqsRes] = await Promise.allSettled([
+    const [abuseRes, vtRes, otxRes, greyNoiseRes] = await Promise.allSettled([
       this.checkAbuseIpDb(ip),
       this.checkVirusTotal(ip),
       this.checkAlienVault(ip),
-      this.checkIpQualityScore(ip),
+      this.checkGreyNoise(ip),
     ]);
 
     const sources: ThreatIntelResult['sources'] = {};
@@ -318,7 +357,8 @@ export class ThreatIntelService {
       if (vtRes.value.country && resolvedCountry === 'N/A') {
         resolvedCountry = vtRes.value.country;
       }
-      if (vtRes.value.asOwner && !resolvedIsp) resolvedIsp = vtRes.value.asOwner;
+      if (vtRes.value.asOwner && !resolvedIsp)
+        resolvedIsp = vtRes.value.asOwner;
     }
 
     if (otxRes.status === 'fulfilled' && otxRes.value) {
@@ -329,15 +369,16 @@ export class ThreatIntelService {
       }
     }
 
-    if (ipqsRes.status === 'fulfilled' && ipqsRes.value) {
-      sources.ipQualityScore = ipqsRes.value;
-      scores.push(ipqsRes.value.score);
-      if (ipqsRes.value.countryCode && resolvedCountry === 'N/A') {
-        resolvedCountry = ipqsRes.value.countryCode;
+    if (greyNoiseRes.status === 'fulfilled' && greyNoiseRes.value) {
+      sources.greyNoise = greyNoiseRes.value;
+      scores.push(greyNoiseRes.value.score);
+      if (greyNoiseRes.value.countryCode && resolvedCountry === 'N/A') {
+        resolvedCountry = greyNoiseRes.value.countryCode;
       }
-      if (ipqsRes.value.isp && !resolvedIsp) resolvedIsp = ipqsRes.value.isp;
-      if (ipqsRes.value.city) resolvedCity = ipqsRes.value.city;
-      if (ipqsRes.value.region) resolvedRegion = ipqsRes.value.region;
+      if (greyNoiseRes.value.isp && !resolvedIsp)
+        resolvedIsp = greyNoiseRes.value.isp;
+      if (greyNoiseRes.value.city) resolvedCity = greyNoiseRes.value.city;
+      if (greyNoiseRes.value.region) resolvedRegion = greyNoiseRes.value.region;
     }
 
     // If no provider responded or configured
@@ -346,12 +387,20 @@ export class ThreatIntelService {
     }
 
     // Calculate composite score as average of active providers
-    const compositeScore = Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length);
+    const compositeScore = Math.round(
+      scores.reduce((sum, s) => sum + s, 0) / scores.length,
+    );
 
     let verdict: 'clean' | 'suspicious' | 'critical' = 'clean';
-    if (compositeScore >= 60 || (sources.virusTotal?.malicious && sources.virusTotal.malicious >= 3)) {
+    if (
+      compositeScore >= 60 ||
+      (sources.virusTotal?.malicious && sources.virusTotal.malicious >= 3)
+    ) {
       verdict = 'critical';
-    } else if (compositeScore >= 25 || (sources.virusTotal?.malicious && sources.virusTotal.malicious >= 1)) {
+    } else if (
+      compositeScore >= 25 ||
+      (sources.virusTotal?.malicious && sources.virusTotal.malicious >= 1)
+    ) {
       verdict = 'suspicious';
     }
 
@@ -371,13 +420,26 @@ export class ThreatIntelService {
     };
   }
 
-  async getBlocklistDetails(confidenceMinimum: number = 90, limit: number = 20): Promise<ThreatBlocklistEntry[]> {
+  async getBlocklistDetails(
+    confidenceMinimum: number = 90,
+    limit: number = 20,
+  ): Promise<ThreatBlocklistEntry[]> {
     if (!this.abuseApiKey) {
-      this.logger.warn('AbuseIPDB API key not configured, skipping blocklist fetch');
+      this.logger.warn(
+        'AbuseIPDB API key not configured, skipping blocklist fetch',
+      );
       return [];
     }
 
-    const effectiveLimit = Math.max(1, limit || parseInt(this.configService.get<string>('ABUSEIPDB_LIMIT') || '20', 10) || 20);
+    const effectiveLimit = Math.max(
+      1,
+      limit ||
+        parseInt(
+          this.configService.get<string>('ABUSEIPDB_LIMIT') || '20',
+          10,
+        ) ||
+        20,
+    );
 
     try {
       const response = await lastValueFrom(
@@ -405,7 +467,12 @@ export class ThreatIntelService {
         .slice(0, effectiveLimit)
         .map((entry: any) => ({
           ipAddress: entry.ipAddress,
-          countryCode: entry.countryCode && entry.countryCode !== 'N/A' && entry.countryCode !== 'n/a' ? entry.countryCode : undefined,
+          countryCode:
+            entry.countryCode &&
+            entry.countryCode !== 'N/A' &&
+            entry.countryCode !== 'n/a'
+              ? entry.countryCode
+              : undefined,
           abuseConfidenceScore: entry.abuseConfidenceScore || confidenceMinimum,
         }));
     } catch (error: any) {
@@ -414,7 +481,10 @@ export class ThreatIntelService {
     }
   }
 
-  async getBlocklist(confidenceMinimum: number = 90, limit: number = 20): Promise<string[]> {
+  async getBlocklist(
+    confidenceMinimum: number = 90,
+    limit: number = 20,
+  ): Promise<string[]> {
     const details = await this.getBlocklistDetails(confidenceMinimum, limit);
     return details.map((entry) => entry.ipAddress);
   }

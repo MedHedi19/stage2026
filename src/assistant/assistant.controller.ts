@@ -1,4 +1,13 @@
-import { Controller, Post, Body, Get, Param, UseGuards, Request, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  UseGuards,
+  Request,
+  UseInterceptors,
+} from '@nestjs/common';
 import { AssistantService } from './assistant.service';
 import { ChatRequestDto } from './dto/chat-request.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -21,7 +30,12 @@ export class AssistantController {
   // Limit to 20 requests per hour (3600000ms) for chat
   @Throttle({ default: { limit: 20, ttl: 3600000 } })
   async chat(@Request() req, @Body() chatRequestDto: ChatRequestDto) {
-    return this.assistantService.chat(req.user.id, req.user.username, req.user.role, chatRequestDto);
+    return this.assistantService.chat(
+      req.user.id,
+      req.user.username,
+      req.user.role,
+      chatRequestDto,
+    );
   }
 
   @Get('history/:conversationId')

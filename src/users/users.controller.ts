@@ -1,4 +1,18 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, ParseIntPipe, UseInterceptors, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+  ParseIntPipe,
+  UseInterceptors,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -26,16 +40,24 @@ export class UsersController {
   }
 
   @Put('me')
-  async updateMe(@Request() req, @Body() body: { username?: string; currentPassword?: string; newPassword?: string }) {
+  async updateMe(
+    @Request() req,
+    @Body()
+    body: { username?: string; currentPassword?: string; newPassword?: string },
+  ) {
     const userId = req.user.id;
     const attrs: any = {};
 
     if (req.user.mustChangePassword && !body.newPassword) {
-      throw new BadRequestException('You must change the administrator-provided password before continuing');
+      throw new BadRequestException(
+        'You must change the administrator-provided password before continuing',
+      );
     }
 
     if (req.user.mustChangePassword && body.username) {
-      throw new BadRequestException('Only password changes are allowed until the administrator-provided password is replaced');
+      throw new BadRequestException(
+        'Only password changes are allowed until the administrator-provided password is replaced',
+      );
     }
 
     if (body.username) {
@@ -44,17 +66,26 @@ export class UsersController {
 
     if (body.newPassword) {
       if (!body.currentPassword) {
-        throw new UnauthorizedException('Current password is required to set a new password');
+        throw new UnauthorizedException(
+          'Current password is required to set a new password',
+        );
       }
       if (
         body.newPassword.length < 8 ||
         body.newPassword.length > 100 ||
-        !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/.test(body.newPassword)
+        !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]+$/.test(
+          body.newPassword,
+        )
       ) {
-        throw new BadRequestException('Password must contain at least 8 characters, including uppercase, lowercase, number, and special character');
+        throw new BadRequestException(
+          'Password must contain at least 8 characters, including uppercase, lowercase, number, and special character',
+        );
       }
       // Verify current password
-      const existing = await this.usersService.verifyPassword(userId, body.currentPassword);
+      const existing = await this.usersService.verifyPassword(
+        userId,
+        body.currentPassword,
+      );
       if (!existing) {
         throw new UnauthorizedException('Current password is incorrect');
       }
@@ -62,9 +93,12 @@ export class UsersController {
     }
 
     const result = await this.usersService.update(userId, attrs);
-    
+
     // Log with changed fields
-    const changedFieldsStr = result.changedFields.length > 0 ? result.changedFields.join(', ') : 'none';
+    const changedFieldsStr =
+      result.changedFields.length > 0
+        ? result.changedFields.join(', ')
+        : 'none';
     await this.auditService.log(
       req.user.id,
       req.user.username,
@@ -72,7 +106,7 @@ export class UsersController {
       `User: ${req.user.username} - Changed: ${changedFieldsStr}`,
       req.ip,
     );
-    
+
     return result.user;
   }
 
@@ -95,8 +129,12 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   async create(@Request() req, @Body() createUserDto: CreateUserDto) {
-    const user = await this.usersService.create(createUserDto.username, createUserDto.password, createUserDto.role);
-    
+    const user = await this.usersService.create(
+      createUserDto.username,
+      createUserDto.password,
+      createUserDto.role,
+    );
+
     // Log with username
     await this.auditService.log(
       req.user.id,
@@ -105,20 +143,27 @@ export class UsersController {
       `Created user: ${createUserDto.username} (role: ${createUserDto.role})`,
       req.ip,
     );
-    
+
     return user;
   }
 
   @Put(':id')
   @Roles(UserRole.ADMIN)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  async update(@Request() req, @Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto) {
+  async update(
+    @Request() req,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
     const result = await this.usersService.update(id, updateUserDto, {
       requirePasswordChange: Boolean(updateUserDto.password),
     });
-    
+
     // Log with username and changed fields
-    const changedFieldsStr = result.changedFields.length > 0 ? result.changedFields.join(', ') : 'none';
+    const changedFieldsStr =
+      result.changedFields.length > 0
+        ? result.changedFields.join(', ')
+        : 'none';
     await this.auditService.log(
       req.user.id,
       req.user.username,
@@ -126,7 +171,7 @@ export class UsersController {
       `User: ${result.user.username} - Changed: ${changedFieldsStr}`,
       req.ip,
     );
-    
+
     return result.user;
   }
 

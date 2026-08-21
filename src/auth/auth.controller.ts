@@ -1,4 +1,12 @@
-import { Controller, Post, Body, UseGuards, Request, UnauthorizedException, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  UnauthorizedException,
+  UseInterceptors,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -17,8 +25,6 @@ export class AuthController {
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto.username, loginDto.password);
   }
-
-
 
   @Post('mfa/setup')
   @UseGuards(JwtAuthGuard)

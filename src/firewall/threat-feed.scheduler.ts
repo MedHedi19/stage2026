@@ -16,23 +16,34 @@ export class ThreatFeedScheduler {
   ) {}
 
   @Cron('0 */6 * * *') // every 6 hours
-  async syncThreatFeed(): Promise<{ added: number; skipped: number; total: number }> {
+  async syncThreatFeed(): Promise<{
+    added: number;
+    skipped: number;
+    total: number;
+  }> {
     return this.performSync(20);
   }
 
-  async performSync(limit: number = 20): Promise<{ added: number; skipped: number; total: number }> {
+  async performSync(
+    limit: number = 20,
+  ): Promise<{ added: number; skipped: number; total: number }> {
     this.logger.log(`Starting threat feed sync (limit: ${limit})...`);
-    
+
     try {
       // Get high-confidence threat IPs from AbuseIPDB with country and score details
-      const threatEntries = await this.threatIntelService.getBlocklistDetails(95, limit);
-      
+      const threatEntries = await this.threatIntelService.getBlocklistDetails(
+        95,
+        limit,
+      );
+
       if (!threatEntries || threatEntries.length === 0) {
         this.logger.log('No threat IPs found in feed');
         return { added: 0, skipped: 0, total: 0 };
       }
 
-      this.logger.log(`Processing ${threatEntries.length} threat IPs from feed`);
+      this.logger.log(
+        `Processing ${threatEntries.length} threat IPs from feed`,
+      );
 
       let added = 0;
       let skipped = 0;
@@ -55,7 +66,10 @@ export class ThreatFeedScheduler {
           const isBlacklisted = await this.blacklistService.isBlacklisted(ip);
           if (isBlacklisted) {
             if (countryCode) {
-              await this.blacklistService.updateCountryCodeIfMissing(ip, countryCode);
+              await this.blacklistService.updateCountryCodeIfMissing(
+                ip,
+                countryCode,
+              );
             }
             this.logger.log(`Skipping already blacklisted IP: ${ip}`);
             skipped++;
@@ -72,7 +86,9 @@ export class ThreatFeedScheduler {
             { abuseScore, abuseCategories: undefined, countryCode },
           );
 
-          this.logger.log(`Added IP to blacklist from threat feed: ${ip} (Country: ${countryCode || 'N/A'})`);
+          this.logger.log(
+            `Added IP to blacklist from threat feed: ${ip} (Country: ${countryCode || 'N/A'})`,
+          );
           added++;
         } catch (error: any) {
           this.logger.error(`Failed to process IP ${ip}: ${error.message}`);
@@ -80,7 +96,9 @@ export class ThreatFeedScheduler {
         }
       }
 
-      this.logger.log(`Threat feed sync completed: ${added} added, ${skipped} skipped, ${threatEntries.length} total`);
+      this.logger.log(
+        `Threat feed sync completed: ${added} added, ${skipped} skipped, ${threatEntries.length} total`,
+      );
       return { added, skipped, total: threatEntries.length };
     } catch (error: any) {
       this.logger.error(`Threat feed sync failed: ${error.message}`);

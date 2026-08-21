@@ -13,8 +13,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private readonly usersService: UsersService,
   ) {
     const jwtSecret = configService.get<string>('JWT_SECRET');
-    if (!jwtSecret || jwtSecret === 'super_secret_signing_key_change_me_in_prod' || jwtSecret === 'default_jwt_secret_key_123') {
-      throw new Error('JWT_SECRET must be set to a strong, unique value in production environment variables');
+    if (
+      !jwtSecret ||
+      jwtSecret === 'super_secret_signing_key_change_me_in_prod' ||
+      jwtSecret === 'default_jwt_secret_key_123'
+    ) {
+      throw new Error(
+        'JWT_SECRET must be set to a strong, unique value in production environment variables',
+      );
     }
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -27,10 +33,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (payload.mfaRequired) {
       throw new UnauthorizedException('MFA verification required');
     }
-    
+
     try {
       const user = await this.usersService.findOne(payload.sub);
-      
+
       // Allow users without MFA to access only the MFA setup endpoint
       // Other endpoints will enforce MFA requirement in the route guards
       return {

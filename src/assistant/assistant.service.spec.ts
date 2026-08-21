@@ -54,7 +54,9 @@ function mockFunctionThenText(name: string, args: object, finalText: string) {
       response: {
         text: () => '',
         functionCalls: () => [{ name, args }],
-        candidates: [{ content: { parts: [{ functionCall: { name, args } }] } }],
+        candidates: [
+          { content: { parts: [{ functionCall: { name, args } }] } },
+        ],
       },
     })
     .mockResolvedValueOnce(mockTextResponse(finalText));
@@ -71,8 +73,18 @@ describe('AssistantService tool-driven chat', () => {
     fetchRecentAlerts: jest.fn(async () => [
       {
         id: 'alert-123',
-        rule: { id: '12345', description: 'Port scan', level: 10, groups: ['suricata'] },
-        data: { src_ip: '10.0.0.5', dest_ip: '10.0.0.1', dest_port: 443, protocol: 'TCP' },
+        rule: {
+          id: '12345',
+          description: 'Port scan',
+          level: 10,
+          groups: ['suricata'],
+        },
+        data: {
+          src_ip: '10.0.0.5',
+          dest_ip: '10.0.0.1',
+          dest_port: 443,
+          protocol: 'TCP',
+        },
         timestamp: '2026-08-12T10:00:00Z',
         agent: { name: 'sensor-1' },
       },
@@ -110,7 +122,7 @@ describe('AssistantService tool-driven chat', () => {
     return new AssistantService(
       conversationLogRepo,
       wazuhService,
-      blacklistService as any,
+      blacklistService,
       whitelistService,
       threatIntelService as any,
       threatFeedScheduler as any,
@@ -137,7 +149,10 @@ describe('AssistantService tool-driven chat', () => {
       'hedi',
     );
     expect(result.reply).toBe('IP 192.168.101.130 ajoutée à la blacklist.');
-    expect(result.mutation).toEqual({ type: 'ip-list-changed', ips: ['192.168.101.130'] });
+    expect(result.mutation).toEqual({
+      type: 'ip-list-changed',
+      ips: ['192.168.101.130'],
+    });
   });
 
   it('unblocks an IP when the model calls unblock_ip', async () => {
@@ -152,8 +167,15 @@ describe('AssistantService tool-driven chat', () => {
       message: 'remove 192.168.101.130 from blacklist',
     });
 
-    expect(blacklistService.unblock).toHaveBeenCalledWith('192.168.101.130', 12, 'hedi');
-    expect(result.mutation).toEqual({ type: 'ip-list-changed', ips: ['192.168.101.130'] });
+    expect(blacklistService.unblock).toHaveBeenCalledWith(
+      '192.168.101.130',
+      12,
+      'hedi',
+    );
+    expect(result.mutation).toEqual({
+      type: 'ip-list-changed',
+      ips: ['192.168.101.130'],
+    });
   });
 
   it('adds an IP to the whitelist when the model calls add_to_whitelist', async () => {
@@ -183,10 +205,23 @@ describe('AssistantService tool-driven chat', () => {
       .mockResolvedValueOnce({
         response: {
           text: () => '',
-          functionCalls: () => [{ name: 'analyze_alert', args: { alertId: '12345' } }],
-          candidates: [{
-            content: { parts: [{ functionCall: { name: 'analyze_alert', args: { alertId: '12345' } } }] },
-          }],
+          functionCalls: () => [
+            { name: 'analyze_alert', args: { alertId: '12345' } },
+          ],
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      name: 'analyze_alert',
+                      args: { alertId: '12345' },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
         },
       })
       .mockResolvedValueOnce({
@@ -203,7 +238,11 @@ describe('AssistantService tool-driven chat', () => {
           candidates: [{ content: { parts: [{ text: '{}' }] } }],
         },
       })
-      .mockResolvedValueOnce(mockTextResponse('Alerte 12345 : probable attaque, scan de ports détecté.'));
+      .mockResolvedValueOnce(
+        mockTextResponse(
+          'Alerte 12345 : probable attaque, scan de ports détecté.',
+        ),
+      );
 
     const result = await service.chat(12, 'hedi', {
       message: 'analyse l alerte 12345, est-ce une attaque ?',
@@ -278,7 +317,9 @@ describe('AssistantService tool-driven chat', () => {
     });
 
     expect(result.mutation?.report?.format).toBe('excel');
-    expect(result.mutation?.report?.reportType).toBe(ReportType.EXECUTIVE_SUMMARY);
+    expect(result.mutation?.report?.reportType).toBe(
+      ReportType.EXECUTIVE_SUMMARY,
+    );
   });
 
   it('requires confirmation before purging blacklist via purge_blacklist tool', async () => {
@@ -288,13 +329,28 @@ describe('AssistantService tool-driven chat', () => {
       .mockResolvedValueOnce({
         response: {
           text: () => '',
-          functionCalls: () => [{ name: 'purge_blacklist', args: { confirmed: false } }],
-          candidates: [{
-            content: { parts: [{ functionCall: { name: 'purge_blacklist', args: { confirmed: false } } }] },
-          }],
+          functionCalls: () => [
+            { name: 'purge_blacklist', args: { confirmed: false } },
+          ],
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      name: 'purge_blacklist',
+                      args: { confirmed: false },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
         },
       })
-      .mockResolvedValueOnce(mockTextResponse('Voulez-vous vraiment purger toute la blacklist ?'));
+      .mockResolvedValueOnce(
+        mockTextResponse('Voulez-vous vraiment purger toute la blacklist ?'),
+      );
 
     const result = await service.chat(12, 'hedi', {
       message: 'remove all ips from blacklist',
@@ -319,6 +375,9 @@ describe('AssistantService tool-driven chat', () => {
     });
 
     expect(blacklistService.purgeAll).toHaveBeenCalledWith(12, 'hedi');
-    expect(result.mutation).toEqual({ type: 'ip-list-changed', ips: ['192.168.101.130'] });
+    expect(result.mutation).toEqual({
+      type: 'ip-list-changed',
+      ips: ['192.168.101.130'],
+    });
   });
 });

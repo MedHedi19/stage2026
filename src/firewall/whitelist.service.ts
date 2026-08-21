@@ -5,7 +5,10 @@ import { WhitelistEntry } from './entities/whitelist-entry.entity';
 import { FirewallService } from './firewall.service';
 import { AuditService } from '../audit/audit.service';
 import { FirewallHistoryService } from './firewall-history.service';
-import { FirewallListType, FirewallAction } from './entities/firewall-history.entity';
+import {
+  FirewallListType,
+  FirewallAction,
+} from './entities/firewall-history.entity';
 
 @Injectable()
 export class WhitelistService {
@@ -39,7 +42,9 @@ export class WhitelistService {
     });
 
     if (existingEntry) {
-      this.logger.log(`IP ${ip} is already whitelisted, returning existing entry`);
+      this.logger.log(
+        `IP ${ip} is already whitelisted, returning existing entry`,
+      );
       return existingEntry;
     }
 
@@ -47,7 +52,9 @@ export class WhitelistService {
     try {
       await this.firewallService.addToSet('whitelist', ip);
     } catch (error: any) {
-      this.logger.error(`Failed to add IP ${ip} to firewall whitelist: ${error.message}`);
+      this.logger.error(
+        `Failed to add IP ${ip} to firewall whitelist: ${error.message}`,
+      );
       throw error; // Rethrow - do NOT save DB row if firewall fails
     }
 
@@ -62,8 +69,20 @@ export class WhitelistService {
     this.logger.log(`Whitelisted IP ${ip} (reason: ${reason})`);
 
     // Audit log
-    await this.auditService.log(userId, username, 'Add to Whitelist', `${ip} - Reason: ${reason}`, ip);
-    await this.historyService.record(FirewallListType.WHITELIST, FirewallAction.ADD, ip, reason, username);
+    await this.auditService.log(
+      userId,
+      username,
+      'Add to Whitelist',
+      `${ip} - Reason: ${reason}`,
+      ip,
+    );
+    await this.historyService.record(
+      FirewallListType.WHITELIST,
+      FirewallAction.ADD,
+      ip,
+      reason,
+      username,
+    );
 
     return savedEntry;
   }
@@ -83,18 +102,34 @@ export class WhitelistService {
     try {
       await this.firewallService.removeFromSet('whitelist', ip);
     } catch (error: any) {
-      this.logger.warn(`Failed to remove IP ${ip} from firewall whitelist (continuing): ${error.message}`);
+      this.logger.warn(
+        `Failed to remove IP ${ip} from firewall whitelist (continuing): ${error.message}`,
+      );
       // Continue - DB state is more important than ipset state
     }
 
     // Delete from database
     const result = await this.whitelistRepository.delete({ ip });
 
-    this.logger.log(`Removed IP ${ip} from whitelist, deleted ${result.affected} entries`);
+    this.logger.log(
+      `Removed IP ${ip} from whitelist, deleted ${result.affected} entries`,
+    );
 
     // Audit log
-    await this.auditService.log(userId, username, 'Remove from Whitelist', `${ip} - Reason: ${reason}`, ip);
-    await this.historyService.record(FirewallListType.WHITELIST, FirewallAction.REMOVE, ip, reason, username);
+    await this.auditService.log(
+      userId,
+      username,
+      'Remove from Whitelist',
+      `${ip} - Reason: ${reason}`,
+      ip,
+    );
+    await this.historyService.record(
+      FirewallListType.WHITELIST,
+      FirewallAction.REMOVE,
+      ip,
+      reason,
+      username,
+    );
   }
 
   /**
@@ -109,15 +144,29 @@ export class WhitelistService {
       try {
         await this.firewallService.removeFromSet('whitelist', ip);
       } catch (error: any) {
-        this.logger.warn(`Failed to remove IP ${ip} from firewall whitelist during purge (continuing): ${error.message}`);
+        this.logger.warn(
+          `Failed to remove IP ${ip} from firewall whitelist during purge (continuing): ${error.message}`,
+        );
       }
     }
 
     if (ips.length > 0) {
       await this.whitelistRepository.clear();
-      await this.auditService.log(userId, username, 'Purge Whitelist', `Purged ${ips.length} whitelist entries`, ips.join(','));
+      await this.auditService.log(
+        userId,
+        username,
+        'Purge Whitelist',
+        `Purged ${ips.length} whitelist entries`,
+        ips.join(','),
+      );
       for (const ip of ips) {
-        await this.historyService.record(FirewallListType.WHITELIST, FirewallAction.PURGE, ip, 'Purge all', username);
+        await this.historyService.record(
+          FirewallListType.WHITELIST,
+          FirewallAction.PURGE,
+          ip,
+          'Purge all',
+          username,
+        );
       }
     }
 
@@ -132,7 +181,11 @@ export class WhitelistService {
    * @param search Optional search term for IP addresses
    * @returns Array of whitelist entries ordered by createdAt DESC
    */
-  async list(page: number = 1, limit: number = 30, search?: string): Promise<WhitelistEntry[]> {
+  async list(
+    page: number = 1,
+    limit: number = 30,
+    search?: string,
+  ): Promise<WhitelistEntry[]> {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (search) {

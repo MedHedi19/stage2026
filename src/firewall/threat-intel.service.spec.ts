@@ -56,10 +56,7 @@ describe('ThreatIntelService', () => {
             abuseConfidenceScore: 85,
             totalReports: 12,
             countryCode: 'US',
-            reports: [
-              { categories: [14, 18] },
-              { categories: [14, 22] },
-            ],
+            reports: [{ categories: [14, 18] }, { categories: [14, 22] }],
           },
         },
       };
@@ -85,7 +82,7 @@ describe('ThreatIntelService', () => {
             maxAgeInDays: 90,
           },
           timeout: 10000,
-        }
+        },
       );
     });
 
@@ -139,7 +136,7 @@ describe('ThreatIntelService', () => {
     it('should return null on API error', async () => {
       service = await createService('test-api-key');
       (httpService.get as jest.Mock).mockReturnValue(
-        throwError(new Error('Rate limit exceeded'))
+        throwError(new Error('Rate limit exceeded')),
       );
 
       const result = await service.checkIp('192.168.1.1');
@@ -150,7 +147,7 @@ describe('ThreatIntelService', () => {
     it('should return null on network error', async () => {
       service = await createService('test-api-key');
       (httpService.get as jest.Mock).mockReturnValue(
-        throwError(new Error('ETIMEDOUT'))
+        throwError(new Error('ETIMEDOUT')),
       );
 
       const result = await service.checkIp('192.168.1.1');
@@ -239,7 +236,7 @@ describe('ThreatIntelService', () => {
             limit: 1000,
           },
           timeout: 10000,
-        }
+        },
       );
     });
 
@@ -260,14 +257,14 @@ describe('ThreatIntelService', () => {
           params: expect.objectContaining({
             confidenceMinimum: 90,
           }),
-        })
+        }),
       );
     });
 
     it('should return empty array on API error', async () => {
       service = await createService('test-api-key');
       (httpService.get as jest.Mock).mockReturnValue(
-        throwError(new Error('Rate limit exceeded'))
+        throwError(new Error('Rate limit exceeded')),
       );
 
       const result = await service.getBlocklist();

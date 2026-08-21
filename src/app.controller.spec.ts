@@ -28,7 +28,9 @@ describe('AppController', () => {
 
   describe('root', () => {
     it('should return the application health message', () => {
-      expect(appController.getHello()).toBe('IDS/IPS Cybersecurity Dashboard API is running.');
+      expect(appController.getHello()).toBe(
+        'IDS/IPS Cybersecurity Dashboard API is running.',
+      );
     });
   });
 });

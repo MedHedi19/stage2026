@@ -41,8 +41,7 @@ const MATCHERS: RuleMatcher[] = [
   {
     label: 'Port Scanning',
     test: (d, g) =>
-      /port\s*scan|nmap|masscan|reconnaissance/i.test(d) ||
-      g.includes('recon'),
+      /port\s*scan|nmap|masscan|reconnaissance/i.test(d) || g.includes('recon'),
   },
   {
     label: 'SSH Brute Force',
@@ -51,10 +50,12 @@ const MATCHERS: RuleMatcher[] = [
       (g.includes('authentication_failed') && /ssh/i.test(d)),
   },
   {
-    label: 'Échec d\'authentification',
+    label: "Échec d'authentification",
     test: (d, g) =>
       g.includes('authentication_failed') ||
-      /authentication\s*fail|login\s*fail|invalid\s*user|failed\s*password/i.test(d),
+      /authentication\s*fail|login\s*fail|invalid\s*user|failed\s*password/i.test(
+        d,
+      ),
   },
   {
     label: 'Élévation de privilèges',
@@ -133,7 +134,8 @@ const MATCHERS: RuleMatcher[] = [
   {
     label: 'Command & Control',
     test: (d, _g, t) =>
-      t.includes('command and control') || /c2|command.?and.?control|beacon/i.test(d),
+      t.includes('command and control') ||
+      /c2|command.?and.?control|beacon/i.test(d),
   },
   {
     label: 'Lateral Movement',

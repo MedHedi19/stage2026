@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request, UseInterceptors, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+  UseInterceptors,
+  Query,
+} from '@nestjs/common';
 import { BlacklistService } from './blacklist.service';
 import { WhitelistService } from './whitelist.service';
 import { ThreatIntelService } from './threat-intel.service';
@@ -35,7 +46,10 @@ export class FirewallController {
     @Query('search') search?: string,
   ) {
     const parsedPage = Math.max(1, page ? parseInt(page, 10) || 1 : 1);
-    const parsedLimit = Math.max(1, Math.min(1000, limit ? parseInt(limit, 10) || 30 : 30));
+    const parsedLimit = Math.max(
+      1,
+      Math.min(1000, limit ? parseInt(limit, 10) || 30 : 30),
+    );
     const [data, total] = await Promise.all([
       this.blacklistService.list(parsedPage, parsedLimit, search),
       this.blacklistService.count(search),
@@ -90,7 +104,10 @@ export class FirewallController {
   @AuditAction('Backfill Country Codes')
   async backfillCountryCodes() {
     const updated = await this.blacklistService.backfillCountryCodes();
-    return { updated, message: `Updated ${updated} entries with country codes` };
+    return {
+      updated,
+      message: `Updated ${updated} entries with country codes`,
+    };
   }
 
   @Get('whitelist')
@@ -102,7 +119,10 @@ export class FirewallController {
     @Query('search') search?: string,
   ) {
     const parsedPage = Math.max(1, page ? parseInt(page, 10) || 1 : 1);
-    const parsedLimit = Math.max(1, Math.min(1000, limit ? parseInt(limit, 10) || 30 : 30));
+    const parsedLimit = Math.max(
+      1,
+      Math.min(1000, limit ? parseInt(limit, 10) || 30 : 30),
+    );
     const [data, total] = await Promise.all([
       this.whitelistService.list(parsedPage, parsedLimit, search),
       this.whitelistService.count(search),
@@ -136,7 +156,8 @@ export class FirewallController {
   ) {
     let parsedListType: FirewallListType | undefined;
     if (listType === 'blacklist') parsedListType = FirewallListType.BLACKLIST;
-    else if (listType === 'whitelist') parsedListType = FirewallListType.WHITELIST;
+    else if (listType === 'whitelist')
+      parsedListType = FirewallListType.WHITELIST;
 
     const parsedLimit = limit ? parseInt(limit, 10) : undefined;
     return this.firewallHistoryService.getHistory(parsedListType, parsedLimit);

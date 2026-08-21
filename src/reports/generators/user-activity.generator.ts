@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ReportGenerator, ReportGeneratorData, GeneratedReport } from '../interfaces/report-generator.interface';
+import {
+  ReportGenerator,
+  ReportGeneratorData,
+  GeneratedReport,
+} from '../interfaces/report-generator.interface';
 import { ReportType } from '../report-types.enum';
 import { AuditService } from '../../audit/audit.service';
 import PDFDocument from 'pdfkit';
@@ -7,9 +11,7 @@ import { Workbook } from 'exceljs';
 
 @Injectable()
 export class UserActivityGenerator implements ReportGenerator {
-  constructor(
-    private readonly auditService: AuditService,
-  ) {}
+  constructor(private readonly auditService: AuditService) {}
 
   getReportTypeName(): string {
     return 'User Activity';
@@ -17,7 +19,7 @@ export class UserActivityGenerator implements ReportGenerator {
 
   async generate(data: ReportGeneratorData): Promise<GeneratedReport> {
     const { format, filters } = data;
-    
+
     // Fetch user activity data from audit logs
     const auditLogs = await this.auditService.findAll({
       startDate: filters.startDate,
@@ -43,15 +45,18 @@ export class UserActivityGenerator implements ReportGenerator {
 
   private processUserActivity(auditLogs: any[]) {
     // User activity summary
-    const userActivity: Record<string, { 
-      loginCount: number; 
-      logoutCount: number; 
-      actions: number; 
-      lastSeen: string; 
-      firstSeen: string;
-      actionTypes: Record<string, number>;
-      ipAddresses: Set<string>;
-    }> = {};
+    const userActivity: Record<
+      string,
+      {
+        loginCount: number;
+        logoutCount: number;
+        actions: number;
+        lastSeen: string;
+        firstSeen: string;
+        actionTypes: Record<string, number>;
+        ipAddresses: Set<string>;
+      }
+    > = {};
 
     // Action type distribution
     const actionDistribution: Record<string, number> = {};
@@ -61,7 +66,8 @@ export class UserActivityGenerator implements ReportGenerator {
     const activityByDay: Record<string, number> = {};
 
     // Geographic distribution (by IP)
-    const ipActivity: Record<string, { count: number; users: Set<string> }> = {};
+    const ipActivity: Record<string, { count: number; users: Set<string> }> =
+      {};
 
     // Security events
     const securityEvents: Record<string, number> = {
@@ -72,7 +78,7 @@ export class UserActivityGenerator implements ReportGenerator {
       'Export Activities': 0,
     };
 
-    auditLogs.forEach(log => {
+    auditLogs.forEach((log) => {
       const username = log.username || 'Unknown';
       const action = log.action || 'Unknown';
       const timestamp = log.timestamp || new Date().toISOString();
@@ -93,7 +99,8 @@ export class UserActivityGenerator implements ReportGenerator {
 
       // Update user activity
       userActivity[username].actions++;
-      userActivity[username].actionTypes[action] = (userActivity[username].actionTypes[action] || 0) + 1;
+      userActivity[username].actionTypes[action] =
+        (userActivity[username].actionTypes[action] || 0) + 1;
       userActivity[username].ipAddresses.add(ipAddress);
 
       if (new Date(timestamp) > new Date(userActivity[username].lastSeen)) {
@@ -104,10 +111,16 @@ export class UserActivityGenerator implements ReportGenerator {
       }
 
       // Track login/logout
-      if (action.toLowerCase().includes('login') || action.toLowerCase().includes('authenticate')) {
+      if (
+        action.toLowerCase().includes('login') ||
+        action.toLowerCase().includes('authenticate')
+      ) {
         userActivity[username].loginCount++;
       }
-      if (action.toLowerCase().includes('logout') || action.toLowerCase().includes('sign out')) {
+      if (
+        action.toLowerCase().includes('logout') ||
+        action.toLowerCase().includes('sign out')
+      ) {
         userActivity[username].logoutCount++;
       }
 
@@ -118,7 +131,7 @@ export class UserActivityGenerator implements ReportGenerator {
       const date = new Date(timestamp);
       const hour = date.getHours();
       const day = date.toLocaleDateString('en-US', { weekday: 'long' });
-      
+
       activityByHour[`${hour}:00`] = (activityByHour[`${hour}:00`] || 0) + 1;
       activityByDay[day] = (activityByDay[day] || 0) + 1;
 
@@ -130,32 +143,52 @@ export class UserActivityGenerator implements ReportGenerator {
       ipActivity[ipAddress].users.add(username);
 
       // Security events
-      if (action.toLowerCase().includes('failed') || action.toLowerCase().includes('authentication failed')) {
+      if (
+        action.toLowerCase().includes('failed') ||
+        action.toLowerCase().includes('authentication failed')
+      ) {
         securityEvents['Failed Login Attempts']++;
       }
-      if (action.toLowerCase().includes('permission') || action.toLowerCase().includes('role')) {
+      if (
+        action.toLowerCase().includes('permission') ||
+        action.toLowerCase().includes('role')
+      ) {
         securityEvents['Permission Changes']++;
       }
-      if (action.toLowerCase().includes('config') || action.toLowerCase().includes('setting')) {
+      if (
+        action.toLowerCase().includes('config') ||
+        action.toLowerCase().includes('setting')
+      ) {
         securityEvents['Configuration Changes']++;
       }
-      if (action.toLowerCase().includes('data') || action.toLowerCase().includes('access')) {
+      if (
+        action.toLowerCase().includes('data') ||
+        action.toLowerCase().includes('access')
+      ) {
         securityEvents['Data Access']++;
       }
-      if (action.toLowerCase().includes('export') || action.toLowerCase().includes('download')) {
+      if (
+        action.toLowerCase().includes('export') ||
+        action.toLowerCase().includes('download')
+      ) {
         securityEvents['Export Activities']++;
       }
     });
 
     // Convert Sets to Arrays and process data
-    const processedUserActivity = Object.entries(userActivity).map(([username, data]) => ({
-      username,
-      ...data,
-      ipAddresses: Array.from(data.ipAddresses),
-      totalSessions: data.loginCount,
-      uniqueActions: Object.keys(data.actionTypes).length,
-      mostCommonAction: Object.entries(data.actionTypes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A',
-    }));
+    const processedUserActivity = Object.entries(userActivity).map(
+      ([username, data]) => ({
+        username,
+        ...data,
+        ipAddresses: Array.from(data.ipAddresses),
+        totalSessions: data.loginCount,
+        uniqueActions: Object.keys(data.actionTypes).length,
+        mostCommonAction:
+          Object.entries(data.actionTypes).sort(
+            (a, b) => b[1] - a[1],
+          )[0]?.[0] || 'N/A',
+      }),
+    );
 
     // Sort users by activity level
     const topUsers = processedUserActivity
@@ -163,20 +196,24 @@ export class UserActivityGenerator implements ReportGenerator {
       .slice(0, 15);
 
     // Calculate activity patterns
-    const peakActivityHour = Object.entries(activityByHour)
-      .sort((a, b) => (b[1] as number) - (a[1] as number))[0]?.[0] || 'N/A';
+    const peakActivityHour =
+      Object.entries(activityByHour).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+      'N/A';
 
-    const peakActivityDay = Object.entries(activityByDay)
-      .sort((a, b) => (b[1] as number) - (a[1] as number))[0]?.[0] || 'N/A';
+    const peakActivityDay =
+      Object.entries(activityByDay).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+      'N/A';
 
     // Anomalous activity detection
-    const anomalousUsers = processedUserActivity.filter(user => {
-      const avgActions = processedUserActivity.reduce((sum, u) => sum + u.actions, 0) / processedUserActivity.length;
+    const anomalousUsers = processedUserActivity.filter((user) => {
+      const avgActions =
+        processedUserActivity.reduce((sum, u) => sum + u.actions, 0) /
+        processedUserActivity.length;
       return user.actions > avgActions * 3; // More than 3x average
     });
 
     // Recent activity (last 24 hours)
-    const recentActivity = auditLogs.filter(log => {
+    const recentActivity = auditLogs.filter((log) => {
       const logDate = new Date(log.timestamp);
       const dayAgo = new Date();
       dayAgo.setDate(dayAgo.getDate() - 1);
@@ -185,24 +222,41 @@ export class UserActivityGenerator implements ReportGenerator {
 
     return {
       summary: {
-        period: auditLogs.length > 0 ? `${new Date(auditLogs[auditLogs.length - 1]?.timestamp).toLocaleDateString()} - ${new Date(auditLogs[0]?.timestamp).toLocaleDateString()}` : 'N/A',
+        period:
+          auditLogs.length > 0
+            ? `${new Date(auditLogs[auditLogs.length - 1]?.timestamp).toLocaleDateString()} - ${new Date(auditLogs[0]?.timestamp).toLocaleDateString()}`
+            : 'N/A',
         totalUsers: Object.keys(userActivity).length,
         totalActions: auditLogs.length,
-        totalLogins: Object.values(userActivity).reduce((sum, u) => sum + u.loginCount, 0),
+        totalLogins: Object.values(userActivity).reduce(
+          (sum, u) => sum + u.loginCount,
+          0,
+        ),
         uniqueIPs: Object.keys(ipActivity).length,
-        securityEvents: Object.values(securityEvents).reduce((sum, count) => sum + count, 0),
+        securityEvents: Object.values(securityEvents).reduce(
+          (sum, count) => sum + count,
+          0,
+        ),
       },
       userActivity: processedUserActivity,
       topUsers,
       actionDistribution,
-      activityByHour: Object.entries(activityByHour).map(([hour, count]) => ({ hour, count })),
-      activityByDay: Object.entries(activityByDay).map(([day, count]) => ({ day, count })),
-      ipActivity: Object.entries(ipActivity).map(([ip, data]) => ({
-        ip,
-        count: data.count,
-        users: Array.from(data.users),
-        uniqueUsers: data.users.size,
-      })).sort((a, b) => b.count - a.count),
+      activityByHour: Object.entries(activityByHour).map(([hour, count]) => ({
+        hour,
+        count,
+      })),
+      activityByDay: Object.entries(activityByDay).map(([day, count]) => ({
+        day,
+        count,
+      })),
+      ipActivity: Object.entries(ipActivity)
+        .map(([ip, data]) => ({
+          ip,
+          count: data.count,
+          users: Array.from(data.users),
+          uniqueUsers: data.users.size,
+        }))
+        .sort((a, b) => b.count - a.count),
       securityEvents,
       peakActivityHour,
       peakActivityDay,
@@ -214,15 +268,22 @@ export class UserActivityGenerator implements ReportGenerator {
 
   private calculateComplianceMetrics(auditLogs: any[]) {
     const totalLogs = auditLogs.length;
-    const logsWithIP = auditLogs.filter(log => log.ipAddress).length;
-    const logsWithTimestamp = auditLogs.filter(log => log.timestamp).length;
-    const uniqueUsers = new Set(auditLogs.map(log => log.username)).size;
+    const logsWithIP = auditLogs.filter((log) => log.ipAddress).length;
+    const logsWithTimestamp = auditLogs.filter((log) => log.timestamp).length;
+    const uniqueUsers = new Set(auditLogs.map((log) => log.username)).size;
 
     return {
-      auditTrailCompleteness: totalLogs > 0 ? `${((logsWithTimestamp / totalLogs) * 100).toFixed(1)}%` : 'N/A',
-      ipLoggingRate: totalLogs > 0 ? `${((logsWithIP / totalLogs) * 100).toFixed(1)}%` : 'N/A',
+      auditTrailCompleteness:
+        totalLogs > 0
+          ? `${((logsWithTimestamp / totalLogs) * 100).toFixed(1)}%`
+          : 'N/A',
+      ipLoggingRate:
+        totalLogs > 0
+          ? `${((logsWithIP / totalLogs) * 100).toFixed(1)}%`
+          : 'N/A',
       userCoverage: uniqueUsers > 0 ? '100%' : 'N/A',
-      averageLogsPerUser: uniqueUsers > 0 ? (totalLogs / uniqueUsers).toFixed(1) : 'N/A',
+      averageLogsPerUser:
+        uniqueUsers > 0 ? (totalLogs / uniqueUsers).toFixed(1) : 'N/A',
     };
   }
 
@@ -232,19 +293,33 @@ export class UserActivityGenerator implements ReportGenerator {
         const doc = new PDFDocument({ margin: 40, size: 'A4' });
         const chunks: Buffer[] = [];
 
-        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('data', (chunk) => chunks.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(chunks)));
-        doc.on('error', err => reject(err));
+        doc.on('error', (err) => reject(err));
 
         // User Activity Header
-        doc.fontSize(22).fillColor('#0b192c').text('User Activity Report', { align: 'center' });
+        doc
+          .fontSize(22)
+          .fillColor('#0b192c')
+          .text('User Activity Report', { align: 'center' });
         doc.moveDown();
-        doc.fontSize(12).fillColor('gray').text(`Report Period: ${data.summary.period}`, { align: 'center' });
-        doc.fontSize(10).fillColor('gray').text(`Generated: ${new Date().toLocaleString()}`, { align: 'center' });
+        doc
+          .fontSize(12)
+          .fillColor('gray')
+          .text(`Report Period: ${data.summary.period}`, { align: 'center' });
+        doc
+          .fontSize(10)
+          .fillColor('gray')
+          .text(`Generated: ${new Date().toLocaleString()}`, {
+            align: 'center',
+          });
         doc.moveDown(2);
 
         // Activity Summary
-        doc.fontSize(16).fillColor('#0b192c').text('Activity Summary', { underline: true });
+        doc
+          .fontSize(16)
+          .fillColor('#0b192c')
+          .text('Activity Summary', { underline: true });
         doc.moveDown();
 
         const summaryMetrics = [
@@ -266,7 +341,10 @@ export class UserActivityGenerator implements ReportGenerator {
         doc.moveDown();
 
         // Compliance Metrics
-        doc.fontSize(16).fillColor('#0b192c').text('Compliance Metrics', { underline: true });
+        doc
+          .fontSize(16)
+          .fillColor('#0b192c')
+          .text('Compliance Metrics', { underline: true });
         doc.moveDown();
 
         Object.entries(data.complianceMetrics).forEach(([metric, value]) => {
@@ -278,7 +356,10 @@ export class UserActivityGenerator implements ReportGenerator {
         doc.addPage();
 
         // Top Users
-        doc.fontSize(16).fillColor('#0b192c').text('Most Active Users', { underline: true });
+        doc
+          .fontSize(16)
+          .fillColor('#0b192c')
+          .text('Most Active Users', { underline: true });
         doc.moveDown();
 
         const tableTop = doc.y;
@@ -293,8 +374,22 @@ export class UserActivityGenerator implements ReportGenerator {
         let rowY = doc.y;
 
         data.topUsers.forEach((user, index) => {
-          const activityLevel = user.actions > 100 ? 'Very High' : user.actions > 50 ? 'High' : user.actions > 20 ? 'Medium' : 'Low';
-          const activityColor = activityLevel === 'Very High' ? '#ef4444' : activityLevel === 'High' ? '#f59e0b' : activityLevel === 'Medium' ? '#3b82f6' : '#10b981';
+          const activityLevel =
+            user.actions > 100
+              ? 'Very High'
+              : user.actions > 50
+                ? 'High'
+                : user.actions > 20
+                  ? 'Medium'
+                  : 'Low';
+          const activityColor =
+            activityLevel === 'Very High'
+              ? '#ef4444'
+              : activityLevel === 'High'
+                ? '#f59e0b'
+                : activityLevel === 'Medium'
+                  ? '#3b82f6'
+                  : '#10b981';
 
           doc.fontSize(9).fillColor('black').text(user.username, 50, rowY);
           doc.text(user.actions.toString(), 150, rowY);
@@ -307,7 +402,10 @@ export class UserActivityGenerator implements ReportGenerator {
         doc.addPage();
 
         // Security Events
-        doc.fontSize(16).fillColor('#0b192c').text('Security Events', { underline: true });
+        doc
+          .fontSize(16)
+          .fillColor('#0b192c')
+          .text('Security Events', { underline: true });
         doc.moveDown();
 
         Object.entries(data.securityEvents).forEach(([event, count]) => {
@@ -321,11 +419,19 @@ export class UserActivityGenerator implements ReportGenerator {
 
         if (data.anomalousUsers.length > 0) {
           doc.moveDown();
-          doc.fontSize(16).fillColor('#ef4444').text('Anomalous Activity Detected', { underline: true });
+          doc
+            .fontSize(16)
+            .fillColor('#ef4444')
+            .text('Anomalous Activity Detected', { underline: true });
           doc.moveDown();
 
-          data.anomalousUsers.forEach(user => {
-            doc.fontSize(10).fillColor('black').text(`${user.username}: ${user.actions} actions (avg: ${(data.summary.totalActions / data.summary.totalUsers).toFixed(0)})`);
+          data.anomalousUsers.forEach((user) => {
+            doc
+              .fontSize(10)
+              .fillColor('black')
+              .text(
+                `${user.username}: ${user.actions} actions (avg: ${(data.summary.totalActions / data.summary.totalUsers).toFixed(0)})`,
+              );
             doc.moveDown(0.3);
           });
         }
@@ -333,11 +439,20 @@ export class UserActivityGenerator implements ReportGenerator {
         doc.addPage();
 
         // Activity Patterns
-        doc.fontSize(16).fillColor('#0b192c').text('Activity Patterns', { underline: true });
+        doc
+          .fontSize(16)
+          .fillColor('#0b192c')
+          .text('Activity Patterns', { underline: true });
         doc.moveDown();
 
-        doc.fontSize(12).fillColor('#0b192c').text(`Peak Activity Hour: ${data.peakActivityHour}`);
-        doc.fontSize(12).fillColor('#0b192c').text(`Peak Activity Day: ${data.peakActivityDay}`);
+        doc
+          .fontSize(12)
+          .fillColor('#0b192c')
+          .text(`Peak Activity Hour: ${data.peakActivityHour}`);
+        doc
+          .fontSize(12)
+          .fillColor('#0b192c')
+          .text(`Peak Activity Day: ${data.peakActivityDay}`);
         doc.moveDown();
 
         doc.fontSize(14).fillColor('#0b192c').text('Activity by Hour');
@@ -360,7 +475,10 @@ export class UserActivityGenerator implements ReportGenerator {
         doc.addPage();
 
         // IP Address Analysis
-        doc.fontSize(16).fillColor('#0b192c').text('IP Address Analysis', { underline: true });
+        doc
+          .fontSize(16)
+          .fillColor('#0b192c')
+          .text('IP Address Analysis', { underline: true });
         doc.moveDown();
 
         const ipTableTop = doc.y;
@@ -375,7 +493,12 @@ export class UserActivityGenerator implements ReportGenerator {
 
         data.ipActivity.slice(0, 15).forEach(({ ip, count, uniqueUsers }) => {
           const riskLevel = count > 50 ? 'High' : count > 20 ? 'Medium' : 'Low';
-          const riskColor = riskLevel === 'High' ? '#ef4444' : riskLevel === 'Medium' ? '#f59e0b' : '#10b981';
+          const riskColor =
+            riskLevel === 'High'
+              ? '#ef4444'
+              : riskLevel === 'Medium'
+                ? '#f59e0b'
+                : '#10b981';
 
           doc.fontSize(9).fillColor('black').text(ip, 50, ipRowY);
           doc.text(count.toString(), 200, ipRowY);
@@ -386,7 +509,10 @@ export class UserActivityGenerator implements ReportGenerator {
 
         // Action Distribution
         doc.addPage();
-        doc.fontSize(16).fillColor('#0b192c').text('Action Type Distribution', { underline: true });
+        doc
+          .fontSize(16)
+          .fillColor('#0b192c')
+          .text('Action Type Distribution', { underline: true });
         doc.moveDown();
 
         const topActions = Object.entries(data.actionDistribution)
@@ -394,28 +520,46 @@ export class UserActivityGenerator implements ReportGenerator {
           .slice(0, 15);
 
         topActions.forEach(([action, count]) => {
-          const percentage = data.summary.totalActions > 0 
-            ? ((count as number / data.summary.totalActions) * 100).toFixed(1)
-            : '0.0';
-          
-          doc.fontSize(10).fillColor('black').text(`${action}: ${count as number} (${percentage}%)`);
+          const percentage =
+            data.summary.totalActions > 0
+              ? (((count as number) / data.summary.totalActions) * 100).toFixed(
+                  1,
+                )
+              : '0.0';
+
+          doc
+            .fontSize(10)
+            .fillColor('black')
+            .text(`${action}: ${count as number} (${percentage}%)`);
           doc.moveDown(0.3);
         });
 
         // Recent Activity
         doc.addPage();
-        doc.fontSize(16).fillColor('#0b192c').text('Recent Activity (Last 24 Hours)', { underline: true });
+        doc
+          .fontSize(16)
+          .fillColor('#0b192c')
+          .text('Recent Activity (Last 24 Hours)', { underline: true });
         doc.moveDown();
 
-        doc.fontSize(11).fillColor('#64748b').text(`Total Recent Actions: ${data.recentActivityCount}`);
+        doc
+          .fontSize(11)
+          .fillColor('#64748b')
+          .text(`Total Recent Actions: ${data.recentActivityCount}`);
         doc.moveDown();
 
-        doc.fontSize(14).fillColor('#0b192c').text('Audit Trail Recommendations');
+        doc
+          .fontSize(14)
+          .fillColor('#0b192c')
+          .text('Audit Trail Recommendations');
         doc.moveDown();
 
         const recommendations = this.generateRecommendations(data);
         recommendations.forEach((rec, index) => {
-          doc.fontSize(10).fillColor('black').text(`${index + 1}. ${rec}`);
+          doc
+            .fontSize(10)
+            .fillColor('black')
+            .text(`${index + 1}. ${rec}`);
           doc.moveDown(0.5);
         });
 
@@ -430,24 +574,36 @@ export class UserActivityGenerator implements ReportGenerator {
     const recommendations: string[] = [];
 
     if (data.anomalousUsers.length > 0) {
-      recommendations.push(`Investigate ${data.anomalousUsers.length} user(s) with anomalous activity patterns exceeding normal thresholds.`);
+      recommendations.push(
+        `Investigate ${data.anomalousUsers.length} user(s) with anomalous activity patterns exceeding normal thresholds.`,
+      );
     }
 
     if ((data.securityEvents['Failed Login Attempts'] as number) > 10) {
-      const failedAttempts = data.securityEvents['Failed Login Attempts'] as number;
-      recommendations.push(`Review ${failedAttempts} failed login attempts - potential brute force attack detected.`);
+      const failedAttempts = data.securityEvents[
+        'Failed Login Attempts'
+      ] as number;
+      recommendations.push(
+        `Review ${failedAttempts} failed login attempts - potential brute force attack detected.`,
+      );
     }
 
     if (data.complianceMetrics.ipLoggingRate !== '100%') {
-      recommendations.push(`Improve IP logging coverage. Current rate: ${data.complianceMetrics.ipLoggingRate}`);
+      recommendations.push(
+        `Improve IP logging coverage. Current rate: ${data.complianceMetrics.ipLoggingRate}`,
+      );
     }
 
-    if (data.ipActivity.some(ip => ip.uniqueUsers > 5)) {
-      recommendations.push('Review shared IP addresses with multiple user accounts for potential security risks.');
+    if (data.ipActivity.some((ip) => ip.uniqueUsers > 5)) {
+      recommendations.push(
+        'Review shared IP addresses with multiple user accounts for potential security risks.',
+      );
     }
 
     recommendations.push('Continue regular audit log review and analysis.');
-    recommendations.push('Consider implementing automated alerting for suspicious user activity patterns.');
+    recommendations.push(
+      'Consider implementing automated alerting for suspicious user activity patterns.',
+    );
     recommendations.push('Review and update user access privileges quarterly.');
 
     return recommendations;
@@ -460,13 +616,17 @@ export class UserActivityGenerator implements ReportGenerator {
     // Styling
     const headerStyle = {
       font: { bold: true, size: 12, color: { argb: 'FFFFFFFF' } },
-      fill: { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' as const }
+      fill: {
+        type: 'pattern' as const,
+        pattern: 'solid' as const,
+        fgColor: { argb: 'FF0B192C' },
+      },
+      alignment: { horizontal: 'center' as const },
     };
 
     const titleStyle = {
       font: { bold: true, size: 16, color: { argb: 'FF0B192C' } },
-      alignment: { horizontal: 'center' as const }
+      alignment: { horizontal: 'center' as const },
     };
 
     // Title
@@ -476,12 +636,15 @@ export class UserActivityGenerator implements ReportGenerator {
 
     worksheet.mergeCells('A2:F2');
     worksheet.getCell('A2').value = `Report Period: ${data.summary.period}`;
-    worksheet.getCell('A2').style = { font: { size: 10 }, alignment: { horizontal: 'center' as const } };
+    worksheet.getCell('A2').style = {
+      font: { size: 10 },
+      alignment: { horizontal: 'center' as const },
+    };
 
     // Summary
     let row = 4;
     worksheet.getCell(`A${row}`).value = 'Activity Summary';
-    worksheet.getCell(`A${row}`).style = headerStyle as any;
+    worksheet.getCell(`A${row}`).style = headerStyle;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
@@ -489,9 +652,19 @@ export class UserActivityGenerator implements ReportGenerator {
       ['Metric', 'Value', 'Status', 'Trend'],
       ['Total Users', data.summary.totalUsers.toString(), 'Active', '→'],
       ['Total Actions', data.summary.totalActions.toLocaleString(), 'All', '↑'],
-      ['Total Logins', data.summary.totalLogins.toLocaleString(), 'Sessions', '→'],
+      [
+        'Total Logins',
+        data.summary.totalLogins.toLocaleString(),
+        'Sessions',
+        '→',
+      ],
       ['Unique IPs', data.summary.uniqueIPs.toString(), 'Network', '→'],
-      ['Security Events', data.summary.securityEvents.toString(), 'Monitored', '↓'],
+      [
+        'Security Events',
+        data.summary.securityEvents.toString(),
+        'Monitored',
+        '↓',
+      ],
     ];
 
     summaryData.forEach((metric, index) => {
@@ -499,7 +672,7 @@ export class UserActivityGenerator implements ReportGenerator {
         const cell = worksheet.getCell(row, col + 1);
         cell.value = value;
         if (index === 0) {
-          cell.style = headerStyle as any;
+          cell.style = headerStyle;
         }
       });
       row++;
@@ -508,7 +681,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Compliance Metrics
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Compliance Metrics';
-    worksheet.getCell(`A${row}`).style = headerStyle as any;
+    worksheet.getCell(`A${row}`).style = headerStyle;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
@@ -519,8 +692,13 @@ export class UserActivityGenerator implements ReportGenerator {
 
     Object.entries(data.complianceMetrics).forEach(([metric, value]) => {
       const valueString = value as string;
-      const status = valueString === '100%' || valueString === 'N/A' ? 'Compliant' : parseFloat(valueString) > 90 ? 'Good' : 'Needs Improvement';
-      
+      const status =
+        valueString === '100%' || valueString === 'N/A'
+          ? 'Compliant'
+          : parseFloat(valueString) > 90
+            ? 'Good'
+            : 'Needs Improvement';
+
       worksheet.getCell(`A${row}`).value = metric;
       worksheet.getCell(`B${row}`).value = valueString;
       worksheet.getCell(`C${row}`).value = status;
@@ -530,7 +708,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Top Users
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Most Active Users';
-    worksheet.getCell(`A${row}`).style = headerStyle as any;
+    worksheet.getCell(`A${row}`).style = headerStyle;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 
@@ -542,9 +720,16 @@ export class UserActivityGenerator implements ReportGenerator {
     worksheet.getCell(`F${row}`).value = 'Most Common Action';
     row++;
 
-    data.topUsers.forEach(user => {
-      const activityLevel = user.actions > 100 ? 'Very High' : user.actions > 50 ? 'High' : user.actions > 20 ? 'Medium' : 'Low';
-      
+    data.topUsers.forEach((user) => {
+      const activityLevel =
+        user.actions > 100
+          ? 'Very High'
+          : user.actions > 50
+            ? 'High'
+            : user.actions > 20
+              ? 'Medium'
+              : 'Low';
+
       worksheet.getCell(`A${row}`).value = user.username;
       worksheet.getCell(`B${row}`).value = user.actions;
       worksheet.getCell(`C${row}`).value = user.totalSessions;
@@ -557,7 +742,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Security Events
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Security Events';
-    worksheet.getCell(`A${row}`).style = headerStyle as any;
+    worksheet.getCell(`A${row}`).style = headerStyle;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -568,8 +753,15 @@ export class UserActivityGenerator implements ReportGenerator {
 
     Object.entries(data.securityEvents).forEach(([event, count]) => {
       const countNumber = count as number;
-      const riskLevel = countNumber > 10 ? 'High' : countNumber > 5 ? 'Medium' : countNumber > 0 ? 'Low' : 'None';
-      
+      const riskLevel =
+        countNumber > 10
+          ? 'High'
+          : countNumber > 5
+            ? 'Medium'
+            : countNumber > 0
+              ? 'Low'
+              : 'None';
+
       worksheet.getCell(`A${row}`).value = event;
       worksheet.getCell(`B${row}`).value = countNumber;
       worksheet.getCell(`C${row}`).value = riskLevel;
@@ -579,7 +771,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Activity Patterns
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Activity Patterns';
-    worksheet.getCell(`A${row}`).style = headerStyle as any;
+    worksheet.getCell(`A${row}`).style = headerStyle;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -601,7 +793,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // IP Address Analysis
     row += 2;
     worksheet.getCell(`A${row}`).value = 'IP Address Analysis';
-    worksheet.getCell(`A${row}`).style = headerStyle as any;
+    worksheet.getCell(`A${row}`).style = headerStyle;
     worksheet.mergeCells(`A${row}:E${row}`);
     row++;
 
@@ -614,10 +806,15 @@ export class UserActivityGenerator implements ReportGenerator {
 
     data.ipActivity.slice(0, 20).forEach(({ ip, count, uniqueUsers }) => {
       const riskLevel = count > 50 ? 'High' : count > 20 ? 'Medium' : 'Low';
-      const action = riskLevel === 'High' ? 'Investigate' : riskLevel === 'Medium' ? 'Monitor' : 'Normal';
-      
+      const action =
+        riskLevel === 'High'
+          ? 'Investigate'
+          : riskLevel === 'Medium'
+            ? 'Monitor'
+            : 'Normal';
+
       worksheet.getCell(`A${row}`).value = ip;
-      worksheet.getCell(`B${row}`).value = count as any;
+      worksheet.getCell(`B${row}`).value = count;
       worksheet.getCell(`C${row}`).value = uniqueUsers;
       worksheet.getCell(`D${row}`).value = riskLevel;
       worksheet.getCell(`E${row}`).value = action;
@@ -627,7 +824,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Action Distribution
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Action Type Distribution';
-    worksheet.getCell(`A${row}`).style = headerStyle as any;
+    worksheet.getCell(`A${row}`).style = headerStyle;
     worksheet.mergeCells(`A${row}:C${row}`);
     row++;
 
@@ -642,10 +839,11 @@ export class UserActivityGenerator implements ReportGenerator {
 
     topActions.forEach(([action, count]) => {
       const countNumber = count as number;
-      const percentage = data.summary.totalActions > 0 
-        ? ((countNumber / data.summary.totalActions) * 100).toFixed(1)
-        : '0.0';
-      
+      const percentage =
+        data.summary.totalActions > 0
+          ? ((countNumber / data.summary.totalActions) * 100).toFixed(1)
+          : '0.0';
+
       worksheet.getCell(`A${row}`).value = action;
       worksheet.getCell(`B${row}`).value = countNumber;
       worksheet.getCell(`C${row}`).value = `${percentage}%`;
@@ -656,7 +854,7 @@ export class UserActivityGenerator implements ReportGenerator {
     if (data.anomalousUsers.length > 0) {
       row += 2;
       worksheet.getCell(`A${row}`).value = 'Anomalous Activity Detection';
-      worksheet.getCell(`A${row}`).style = headerStyle as any;
+      worksheet.getCell(`A${row}`).style = headerStyle;
       worksheet.mergeCells(`A${row}:D${row}`);
       row++;
 
@@ -666,9 +864,11 @@ export class UserActivityGenerator implements ReportGenerator {
       worksheet.getCell(`D${row}`).value = 'Recommendation';
       row++;
 
-      const avgActions = (data.summary.totalActions / data.summary.totalUsers).toFixed(0);
+      const avgActions = (
+        data.summary.totalActions / data.summary.totalUsers
+      ).toFixed(0);
 
-      data.anomalousUsers.forEach(user => {
+      data.anomalousUsers.forEach((user) => {
         worksheet.getCell(`A${row}`).value = user.username;
         worksheet.getCell(`B${row}`).value = user.actions;
         worksheet.getCell(`C${row}`).value = avgActions;
@@ -680,7 +880,7 @@ export class UserActivityGenerator implements ReportGenerator {
     // Recommendations
     row += 2;
     worksheet.getCell(`A${row}`).value = 'Audit Trail Recommendations';
-    worksheet.getCell(`A${row}`).style = headerStyle as any;
+    worksheet.getCell(`A${row}`).style = headerStyle;
     worksheet.mergeCells(`A${row}:F${row}`);
     row++;
 

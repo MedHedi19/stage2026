@@ -19,14 +19,19 @@ export class AuditService implements OnModuleInit {
         .createQueryBuilder()
         .update(AuditLog)
         .set({ username: 'system' })
-        .where('(username IS NULL OR username = :empty) AND (targetEntity LIKE :abuse OR action LIKE :feed)', {
-          empty: '',
-          abuse: '%AbuseIPDB%',
-          feed: '%Threat Feed%',
-        })
+        .where(
+          '(username IS NULL OR username = :empty) AND (targetEntity LIKE :abuse OR action LIKE :feed)',
+          {
+            empty: '',
+            abuse: '%AbuseIPDB%',
+            feed: '%Threat Feed%',
+          },
+        )
         .execute();
     } catch (err: any) {
-      this.logger.warn(`Failed to backfill audit log system username: ${err?.message}`);
+      this.logger.warn(
+        `Failed to backfill audit log system username: ${err?.message}`,
+      );
     }
   }
 
@@ -57,19 +62,27 @@ export class AuditService implements OnModuleInit {
     const query = this.auditLogRepository.createQueryBuilder('auditLog');
 
     if (filters.username) {
-      query.andWhere('auditLog.username = :username', { username: filters.username });
+      query.andWhere('auditLog.username = :username', {
+        username: filters.username,
+      });
     }
 
     if (filters.action) {
-      query.andWhere('auditLog.action LIKE :action', { action: `%${filters.action}%` });
+      query.andWhere('auditLog.action LIKE :action', {
+        action: `%${filters.action}%`,
+      });
     }
 
     if (filters.startDate) {
-      query.andWhere('auditLog.timestamp >= :startDate', { startDate: filters.startDate });
+      query.andWhere('auditLog.timestamp >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
 
     if (filters.endDate) {
-      query.andWhere('auditLog.timestamp <= :endDate', { endDate: filters.endDate });
+      query.andWhere('auditLog.timestamp <= :endDate', {
+        endDate: filters.endDate,
+      });
     }
 
     query.orderBy('auditLog.timestamp', 'DESC');

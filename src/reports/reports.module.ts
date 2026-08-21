@@ -15,7 +15,12 @@ import { BlacklistEntry } from '../firewall/entities/blacklist-entry.entity';
 import { WhitelistEntry } from '../firewall/entities/whitelist-entry.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Report, BlacklistEntry, WhitelistEntry]), WazuhModule, AuditModule, FirewallModule],
+  imports: [
+    TypeOrmModule.forFeature([Report, BlacklistEntry, WhitelistEntry]),
+    WazuhModule,
+    AuditModule,
+    FirewallModule,
+  ],
   controllers: [ReportsController],
   providers: [
     ReportsService,

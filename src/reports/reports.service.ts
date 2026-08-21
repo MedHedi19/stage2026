@@ -37,7 +37,12 @@ export class ReportsService {
     userId: number,
     username: string,
     format: 'pdf' | 'excel',
-    filters: { severity?: number; ip?: string; startDate?: string; endDate?: string },
+    filters: {
+      severity?: number;
+      ip?: string;
+      startDate?: string;
+      endDate?: string;
+    },
     reportType: ReportType = ReportType.EXECUTIVE_SUMMARY,
   ): Promise<{ buffer: Buffer; filename: string }> {
     // Get the appropriate generator

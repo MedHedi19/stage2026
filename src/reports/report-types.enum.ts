@@ -15,9 +15,13 @@ export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
 };
 
 export const REPORT_TYPE_DESCRIPTIONS: Record<ReportType, string> = {
-  [ReportType.EXECUTIVE_SUMMARY]: 'High-level overview for management with key metrics and trends',
-  [ReportType.INCIDENT_DETAIL]: 'Full incident lifecycle data with MITRE ATT&CK mapping',
-  [ReportType.THREAT_INTELLIGENCE]: 'IOCs detected, geolocation data, and threat actor information',
+  [ReportType.EXECUTIVE_SUMMARY]:
+    'High-level overview for management with key metrics and trends',
+  [ReportType.INCIDENT_DETAIL]:
+    'Full incident lifecycle data with MITRE ATT&CK mapping',
+  [ReportType.THREAT_INTELLIGENCE]:
+    'IOCs detected, geolocation data, and threat actor information',
   [ReportType.USER_ACTIVITY]: 'User actions, login history, and audit trail',
-  [ReportType.FIREWALL_LIST_TRAFFIC]: 'Blacklist and whitelist entries with observed event volume and traffic per IP',
+  [ReportType.FIREWALL_LIST_TRAFFIC]:
+    'Blacklist and whitelist entries with observed event volume and traffic per IP',
 };

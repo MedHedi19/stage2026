@@ -21,9 +21,7 @@ import { FirewallController } from './firewall.controller';
     HttpModule,
     ConfigModule,
   ],
-  controllers: [
-    FirewallController,
-  ],
+  controllers: [FirewallController],
   providers: [
     FirewallService,
     BlacklistService,
@@ -67,11 +65,15 @@ export class FirewallModule implements OnModuleInit {
         await this.firewallService.addToSet('blacklist', entry.ip);
         blacklistRestored++;
       } catch (error: any) {
-        this.logger.warn(`Failed to restore blacklist IP ${entry.ip}: ${error.message}`);
+        this.logger.warn(
+          `Failed to restore blacklist IP ${entry.ip}: ${error.message}`,
+        );
       }
     }
 
-    this.logger.log(`Restored ${blacklistRestored}/${blacklistEntries.length} blacklist entries to ipset`);
+    this.logger.log(
+      `Restored ${blacklistRestored}/${blacklistEntries.length} blacklist entries to ipset`,
+    );
 
     // Restore whitelist from database
     const whitelistEntries = await this.whitelistRepository.find();
@@ -82,11 +84,15 @@ export class FirewallModule implements OnModuleInit {
         await this.firewallService.addToSet('whitelist', entry.ip);
         whitelistRestored++;
       } catch (error: any) {
-        this.logger.warn(`Failed to restore whitelist IP ${entry.ip}: ${error.message}`);
+        this.logger.warn(
+          `Failed to restore whitelist IP ${entry.ip}: ${error.message}`,
+        );
       }
     }
 
-    this.logger.log(`Restored ${whitelistRestored}/${whitelistEntries.length} whitelist entries to ipset`);
+    this.logger.log(
+      `Restored ${whitelistRestored}/${whitelistEntries.length} whitelist entries to ipset`,
+    );
     this.logger.log('Firewall ipset synchronization completed');
   }
 }

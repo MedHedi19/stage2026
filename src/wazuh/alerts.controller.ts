@@ -1,4 +1,10 @@
-import { Controller, Get, Query, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { WazuhService } from './wazuh.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';

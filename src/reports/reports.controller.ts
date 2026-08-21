@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Body, UseGuards, Request, Res, UseInterceptors, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  UseGuards,
+  Request,
+  Res,
+  UseInterceptors,
+  Logger,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import * as express from 'express';
 import { ReportsService } from './reports.service';
@@ -44,7 +54,10 @@ export class ReportsController {
         reportType || ReportType.EXECUTIVE_SUMMARY,
       );
     } catch (error) {
-      this.logger.error(`Report generation failed (type=${reportType || ReportType.EXECUTIVE_SUMMARY}, format=${format || 'pdf'}): ${error.message}`, error.stack);
+      this.logger.error(
+        `Report generation failed (type=${reportType || ReportType.EXECUTIVE_SUMMARY}, format=${format || 'pdf'}): ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
     const { buffer, filename } = generated;

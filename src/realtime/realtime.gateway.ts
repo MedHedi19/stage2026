@@ -1,4 +1,10 @@
-import { WebSocketGateway, WebSocketServer, OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Interval } from '@nestjs/schedule';
 import { WazuhService } from '../wazuh/wazuh.service';
@@ -14,7 +20,9 @@ import { AUTO_BLOCK_SIDS } from '../firewall/auto-block.config';
     origin: '*',
   },
 })
-export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
+export class RealtimeGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   private readonly logger = new Logger(RealtimeGateway.name);
   private seenAlertIds = new Set<string>();
 
@@ -53,11 +61,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       }
 
       // Find new alerts not yet broadcasted (alerts are sorted newest first)
-      const newAlerts = alerts.filter((alert) => !this.seenAlertIds.has(alert.id)).reverse();
+      const newAlerts = alerts
+        .filter((alert) => !this.seenAlertIds.has(alert.id))
+        .reverse();
 
       for (const alert of newAlerts) {
         this.seenAlertIds.add(alert.id);
-        this.logger.log(`Broadcasting new real-time alert: ${alert.rule?.description || 'Alert'} (${alert.id})`);
+        this.logger.log(
+          `Broadcasting new real-time alert: ${alert.rule?.description || 'Alert'} (${alert.id})`,
+        );
         if (this.server) {
           this.server.emit('new-alert', alert);
         }
@@ -71,24 +83,42 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
             const isInAutoBlockList = AUTO_BLOCK_SIDS.includes(sid);
 
             // Check whitelist first
-            const isWhitelisted = await this.whitelistService.isWhitelisted(srcIp);
+            const isWhitelisted =
+              await this.whitelistService.isWhitelisted(srcIp);
 
             // Debug logging
-            console.log('[Auto-Block] srcIp:', srcIp, 'sid:', sid, 'inAutoBlockList:', isInAutoBlockList, 'isWhitelisted:', isWhitelisted);
+            console.log(
+              '[Auto-Block] srcIp:',
+              srcIp,
+              'sid:',
+              sid,
+              'inAutoBlockList:',
+              isInAutoBlockList,
+              'isWhitelisted:',
+              isWhitelisted,
+            );
 
             if (isWhitelisted) {
-              this.logger.log(`IP ${srcIp} is whitelisted, skipping auto-block`);
+              this.logger.log(
+                `IP ${srcIp} is whitelisted, skipping auto-block`,
+              );
               continue;
             }
 
             // Check if SID triggers auto-block
             if (isInAutoBlockList) {
               const description = alert.rule?.description || 'Unknown threat';
-              
+
               // Enrich with threat intelligence (optional - don't fail if API is down)
               let blockReason = `Auto-blocked: ${description}`;
-              let threatData: { abuseScore?: number; abuseCategories?: string; countryCode?: string } | undefined;
-              
+              let threatData:
+                | {
+                    abuseScore?: number;
+                    abuseCategories?: string;
+                    countryCode?: string;
+                  }
+                | undefined;
+
               try {
                 const threatInfo = await this.threatIntelService.checkIp(srcIp);
                 if (threatInfo) {
@@ -101,9 +131,11 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
                 }
               } catch (error: any) {
                 // Threat intel is enrichment only - don't fail the block if it errors
-                this.logger.warn(`Threat intel check failed for ${srcIp}: ${error.message}`);
+                this.logger.warn(
+                  `Threat intel check failed for ${srcIp}: ${error.message}`,
+                );
               }
-              
+
               await this.blacklistService.block(
                 srcIp,
                 blockReason,
@@ -115,7 +147,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
               this.logger.log(`Auto-blocked IP ${srcIp} for SID ${sid}`);
             }
           } catch (error: any) {
-            this.logger.error(`Auto-block failed for IP ${srcIp}: ${error.message}`);
+            this.logger.error(
+              `Auto-block failed for IP ${srcIp}: ${error.message}`,
+            );
             // Continue - don't break alert broadcast
           }
         }

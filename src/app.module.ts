@@ -55,7 +55,15 @@ import { FirewallHistory } from './firewall/entities/firewall-history.entity';
         username: configService.get<string>('DB_USERNAME') || 'ids_app',
         password: configService.get<string>('DB_PASSWORD') || '',
         database: configService.get<string>('DB_DATABASE') || 'ids_ips_db',
-        entities: [User, AuditLog, Report, ConversationLog, BlacklistEntry, WhitelistEntry, FirewallHistory],
+        entities: [
+          User,
+          AuditLog,
+          Report,
+          ConversationLog,
+          BlacklistEntry,
+          WhitelistEntry,
+          FirewallHistory,
+        ],
         // synchronize: true should ONLY be used in development.
         // It automatically aligns the MySQL schema with TypeORM definitions on startup.
         synchronize: true,

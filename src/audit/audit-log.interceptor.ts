@@ -29,7 +29,10 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     const request = context.switchToHttp().getRequest();
     const user = request.user;
-    const ipAddress = request.headers['x-forwarded-for'] || request.ip || request.connection?.remoteAddress;
+    const ipAddress =
+      request.headers['x-forwarded-for'] ||
+      request.ip ||
+      request.connection?.remoteAddress;
 
     return next.handle().pipe(
       tap({
@@ -38,7 +41,11 @@ export class AuditLogInterceptor implements NestInterceptor {
           let username = user?.username || null;
 
           // For login, request.user isn't set yet, but the handler returns the authenticated user
-          if ((action === 'Login' || action === 'Verify MFA') && data && data.user) {
+          if (
+            (action === 'Login' || action === 'Verify MFA') &&
+            data &&
+            data.user
+          ) {
             userId = data.user.id;
             username = data.user.username;
           }
@@ -51,15 +58,17 @@ export class AuditLogInterceptor implements NestInterceptor {
             targetEntity = `user:${request.body.username}`;
           }
 
-          this.auditService.log(
-            userId,
-            username,
-            action,
-            targetEntity,
-            Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
-          ).catch(err => {
-            console.error('AuditLogInterceptor failed to save log:', err);
-          });
+          this.auditService
+            .log(
+              userId,
+              username,
+              action,
+              targetEntity,
+              Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+            )
+            .catch((err) => {
+              console.error('AuditLogInterceptor failed to save log:', err);
+            });
         },
       }),
     );
