@@ -45,6 +45,8 @@ export interface IpQualityScoreSourceResult {
   botStatus?: boolean;
   isp?: string;
   countryCode?: string;
+  city?: string;
+  region?: string;
 }
 
 export interface ThreatIntelResult {
@@ -56,6 +58,8 @@ export interface ThreatIntelResult {
   categories: number[];
   countryCode: string;
   countryName?: string;
+  city?: string;
+  region?: string;
   isp?: string;
   activeSources?: number;
   sources?: {
@@ -255,6 +259,8 @@ export class ThreatIntelService {
         botStatus: Boolean(data.bot_status),
         isp: data.ISP,
         countryCode: data.country_code,
+        city: data.city || undefined,
+        region: data.region || undefined,
       };
     } catch (error: any) {
       this.logger.warn(`IPQualityScore check failed for IP ${ip}: ${error.message}`);
@@ -294,6 +300,8 @@ export class ThreatIntelService {
 
     let resolvedCountry = 'N/A';
     let resolvedIsp: string | undefined;
+    let resolvedCity: string | undefined;
+    let resolvedRegion: string | undefined;
 
     if (abuseRes.status === 'fulfilled' && abuseRes.value) {
       sources.abuseipdb = abuseRes.value;
@@ -328,6 +336,8 @@ export class ThreatIntelService {
         resolvedCountry = ipqsRes.value.countryCode;
       }
       if (ipqsRes.value.isp && !resolvedIsp) resolvedIsp = ipqsRes.value.isp;
+      if (ipqsRes.value.city) resolvedCity = ipqsRes.value.city;
+      if (ipqsRes.value.region) resolvedRegion = ipqsRes.value.region;
     }
 
     // If no provider responded or configured
@@ -353,6 +363,8 @@ export class ThreatIntelService {
       totalReports: sources.abuseipdb?.totalReports || 0,
       categories: sources.abuseipdb?.categories || [],
       countryCode: resolvedCountry,
+      city: resolvedCity,
+      region: resolvedRegion,
       isp: resolvedIsp,
       activeSources: scores.length,
       sources,

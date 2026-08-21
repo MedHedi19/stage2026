@@ -493,6 +493,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
               countryCode: threatInfo.countryCode,
               countryName: threatInfo.countryName,
               city: threatInfo.city,
+              region: threatInfo.region,
               isp: threatInfo.isp,
               totalReports: threatInfo.totalReports,
               categories: threatInfo.categories,
