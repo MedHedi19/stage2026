@@ -66,7 +66,7 @@ OUTILS DISPONIBLES (appelle-les selon l'intention, pas selon des mots-clés) :
 - purge_blacklist / purge_whitelist : vider une liste (confirmed=true seulement après confirmation explicite)
 - get_firewall_history : historique des opérations blacklist/whitelist (qui a bloqué/débloqué, quand, pourquoi). Peut filtrer par liste (blacklist/whitelist) et limiter le nombre d'entrées.
 - generate_report : exporter un rapport PDF/Excel (types : executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
-- check_ip_reputation : vérifier la réputation d'une IP via AbuseIPDB (score de confiance, rapports, catégories, pays)
+- check_ip_reputation : vérifier la réputation, le score de menace multi-source (AbuseIPDB, VirusTotal, AlienVault, IPQS), la localisation géographique (pays, ville/town, région) et le fournisseur/ISP d'une adresse IP
 - sync_threat_feed : synchroniser automatiquement le flux de menaces AbuseIPDB (IPs à haute confiance ≥95%)
 - get_country_stats : obtenir les statistiques géographiques des IP blacklistées (top pays, distribution géographique)
 
@@ -94,7 +94,7 @@ AVAILABLE TOOLS (call them based on intent, not keywords):
 - purge_blacklist / purge_whitelist: clear a list (confirmed=true only after explicit confirmation)
 - get_firewall_history: history of blacklist/whitelist operations (who blocked/unblocked, when, why). Can filter by list (blacklist/whitelist) and limit number of entries.
 - generate_report: export a PDF/Excel report (types: executive_summary, incident_detail, threat_intelligence, user_activity, firewall_list_traffic)
-- check_ip_reputation: check IP reputation via AbuseIPDB (confidence score, reports, categories, country)
+- check_ip_reputation: check multi-source IP reputation, threat score (AbuseIPDB, VirusTotal, AlienVault, IPQS), geographic location (country, city/town, region), and ISP
 - sync_threat_feed: automatically sync AbuseIPDB threat feed (high confidence IPs ≥95%)
 - get_country_stats: get geographic statistics of blacklisted IPs (top countries, geographic distribution)
 
@@ -481,15 +481,23 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
 
         const threatInfo = await this.threatIntelService.checkIp(ip);
         if (threatInfo) {
+          const score = threatInfo.compositeScore ?? threatInfo.abuseScore ?? 0;
           return {
             result: {
               success: true,
               ip,
-              abuseScore: threatInfo.abuseScore,
+              compositeScore: score,
+              abuseScore: score,
+              verdict: threatInfo.verdict || (score >= 60 ? 'critical' : score >= 25 ? 'suspicious' : 'clean'),
+              severity: score >= 60 ? 'high / critical' : score >= 25 ? 'medium / suspicious' : 'low / clean',
+              countryCode: threatInfo.countryCode,
+              countryName: threatInfo.countryName,
+              city: threatInfo.city,
+              isp: threatInfo.isp,
               totalReports: threatInfo.totalReports,
               categories: threatInfo.categories,
-              countryCode: threatInfo.countryCode,
-              severity: threatInfo.abuseScore >= 50 ? 'high' : threatInfo.abuseScore >= 25 ? 'medium' : 'low',
+              activeSources: threatInfo.activeSources || 1,
+              sourcesBreakdown: threatInfo.sources,
             },
           };
         } else {

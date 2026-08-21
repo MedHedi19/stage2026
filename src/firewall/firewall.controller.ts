@@ -34,8 +34,8 @@ export class FirewallController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
-    const parsedPage = page ? parseInt(page, 10) : 1;
-    const parsedLimit = limit ? parseInt(limit, 10) : 30;
+    const parsedPage = Math.max(1, page ? parseInt(page, 10) || 1 : 1);
+    const parsedLimit = Math.max(1, Math.min(1000, limit ? parseInt(limit, 10) || 30 : 30));
     const [data, total] = await Promise.all([
       this.blacklistService.list(parsedPage, parsedLimit, search),
       this.blacklistService.count(search),
@@ -68,9 +68,14 @@ export class FirewallController {
   }
 
   @Post('sync-threat-feed')
-  @Roles(UserRole.ADMIN)
-  async syncThreatFeed() {
-    return this.threatFeedScheduler.performSync();
+  @Roles(UserRole.ADMIN, UserRole.ANALYST)
+  @AuditAction('Sync Threat Feed (AbuseIPDB)')
+  async syncThreatFeed(
+    @Query('limit') queryLimit?: string,
+    @Body('limit') bodyLimit?: number,
+  ) {
+    const limit = bodyLimit || (queryLimit ? parseInt(queryLimit, 10) : 20);
+    return this.threatFeedScheduler.performSync(limit);
   }
 
   @Get('country-stats')
@@ -96,8 +101,8 @@ export class FirewallController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
-    const parsedPage = page ? parseInt(page, 10) : 1;
-    const parsedLimit = limit ? parseInt(limit, 10) : 30;
+    const parsedPage = Math.max(1, page ? parseInt(page, 10) || 1 : 1);
+    const parsedLimit = Math.max(1, Math.min(1000, limit ? parseInt(limit, 10) || 30 : 30));
     const [data, total] = await Promise.all([
       this.whitelistService.list(parsedPage, parsedLimit, search),
       this.whitelistService.count(search),

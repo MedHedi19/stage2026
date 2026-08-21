@@ -17,15 +17,15 @@ export class ThreatFeedScheduler {
 
   @Cron('0 */6 * * *') // every 6 hours
   async syncThreatFeed(): Promise<{ added: number; skipped: number; total: number }> {
-    return this.performSync();
+    return this.performSync(20);
   }
 
-  async performSync(): Promise<{ added: number; skipped: number; total: number }> {
-    this.logger.log('Starting threat feed sync...');
+  async performSync(limit: number = 20): Promise<{ added: number; skipped: number; total: number }> {
+    this.logger.log(`Starting threat feed sync (limit: ${limit})...`);
     
     try {
       // Get high-confidence threat IPs from AbuseIPDB with country and score details
-      const threatEntries = await this.threatIntelService.getBlocklistDetails(95);
+      const threatEntries = await this.threatIntelService.getBlocklistDetails(95, limit);
       
       if (!threatEntries || threatEntries.length === 0) {
         this.logger.log('No threat IPs found in feed');
@@ -62,13 +62,13 @@ export class ThreatFeedScheduler {
             continue;
           }
 
-          // Block the IP with threat intel data and username 'system'
+          // Block the IP with threat intel data and username 'AbuseIPDB'
           await this.blacklistService.block(
             ip,
             'AbuseIPDB threat feed (confidence >= 95)',
-            BlockSource.AUTO,
+            BlockSource.ABUSEIPDB,
             null,
-            'system',
+            'AbuseIPDB',
             { abuseScore, abuseCategories: undefined, countryCode },
           );
 

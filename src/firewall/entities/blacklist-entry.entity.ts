@@ -3,6 +3,7 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeor
 export enum BlockSource {
   AUTO = 'auto',
   MANUAL = 'manual',
+  ABUSEIPDB = 'abuseipdb',
 }
 
 @Entity('blacklist_entries')

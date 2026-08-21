@@ -207,9 +207,11 @@ export const ASSISTANT_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'check_ip_reputation',
     description:
-      'Vérifie la réputation d\'une adresse IP via AbuseIPDB. ' +
-      'Retourne le score de confiance (0-100), le nombre de rapports, les catégories de menaces et le pays. ' +
-      'Utilise cet outil quand l\'utilisateur demande de vérifier si une IP est malveillante, son score de menace, ou son niveau de confiance.',
+      'Vérifie la réputation, la localisation géographique (pays, ville/town, région) et le fournisseur/ISP d\'une adresse IP ' +
+      'via les moteurs de Threat Intelligence (AbuseIPDB, VirusTotal, AlienVault OTX, IPQualityScore). ' +
+      'Retourne le score de menace global (0-100), le verdict (sain, suspect, malveillant), le pays, la ville, l\'ISP, ' +
+      'le nombre de détections et le détail par source. ' +
+      'Utilise cet outil quand l\'utilisateur demande des informations sur une IP : d\'où elle vient (quel pays, quelle ville/town), son score de réputation, sa dangerosité ou son historique d\'attaques.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
