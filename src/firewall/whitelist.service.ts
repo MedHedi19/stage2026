@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Like } from 'typeorm';
 import { WhitelistEntry } from './entities/whitelist-entry.entity';
 import { FirewallService } from './firewall.service';
 import { AuditService } from '../audit/audit.service';
@@ -189,7 +189,7 @@ export class WhitelistService {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (search) {
-      where.ip = search;
+      where.ip = Like(`${search}%`);
     }
     return this.whitelistRepository.find({
       where,
@@ -219,7 +219,7 @@ export class WhitelistService {
   async count(search?: string): Promise<number> {
     const where: any = {};
     if (search) {
-      where.ip = search;
+      where.ip = Like(`${search}%`);
     }
     return this.whitelistRepository.count({ where });
   }

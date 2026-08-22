@@ -121,11 +121,12 @@ export class RealtimeGateway
 
               try {
                 const threatInfo = await this.threatIntelService.checkIp(srcIp);
-                if (threatInfo) {
-                  blockReason += ` (AbuseIPDB score: ${threatInfo.abuseScore}/100, ${threatInfo.totalReports} reports)`;
+                if (threatInfo && threatInfo.sources?.abuseipdb) {
+                  const abuseData = threatInfo.sources.abuseipdb;
+                  blockReason += ` (AbuseIPDB score: ${abuseData.score}/100, ${abuseData.totalReports} reports)`;
                   threatData = {
-                    abuseScore: threatInfo.abuseScore,
-                    abuseCategories: threatInfo.categories.join(','),
+                    abuseScore: abuseData.score,
+                    abuseCategories: abuseData.categories.join(','),
                     countryCode: threatInfo.countryCode,
                   };
                 }

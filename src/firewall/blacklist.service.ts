@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, Like } from 'typeorm';
 import { BlacklistEntry, BlockSource } from './entities/blacklist-entry.entity';
 import { FirewallService } from './firewall.service';
 import { AuditService } from '../audit/audit.service';
@@ -323,7 +323,7 @@ export class BlacklistService {
     const skip = (page - 1) * limit;
     const where: any = { active: true };
     if (search) {
-      where.ip = search;
+      where.ip = Like(`${search}%`);
     }
     return this.blacklistRepository.find({
       where,
@@ -353,7 +353,7 @@ export class BlacklistService {
   async count(search?: string): Promise<number> {
     const where: any = { active: true };
     if (search) {
-      where.ip = search;
+      where.ip = Like(`${search}%`);
     }
     return this.blacklistRepository.count({ where });
   }

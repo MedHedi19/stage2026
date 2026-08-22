@@ -319,8 +319,15 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
           args.reason || `Bloqué via assistant: ${ctx.userMessage}`,
         );
         const affectedIps: string[] = [];
+        const alreadyBlockedIps: string[] = [];
 
         for (const ip of ips) {
+          // Check if IP is already blacklisted
+          if (await this.blacklistService.isBlacklisted(ip)) {
+            alreadyBlockedIps.push(ip);
+            continue;
+          }
+
           if (await this.whitelistService.isWhitelisted(ip)) {
             await this.whitelistService.remove(ip, ctx.userId, ctx.username);
           }
@@ -334,8 +341,29 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
           affectedIps.push(ip);
         }
 
+        // If all IPs were already blocked, return appropriate message
+        if (affectedIps.length === 0 && alreadyBlockedIps.length > 0) {
+          return {
+            result: {
+              success: false,
+              message: `Les adresses IP suivantes sont déjà bloquées: ${alreadyBlockedIps.join(', ')}`,
+              alreadyBlocked: alreadyBlockedIps,
+            },
+          };
+        }
+
+        // If some IPs were already blocked, include warning
+        const message = alreadyBlockedIps.length > 0
+          ? `${affectedIps.length} IP(s) bloquée(s). ${alreadyBlockedIps.length} IP(s) déjà bloquée(s): ${alreadyBlockedIps.join(', ')}`
+          : undefined;
+
         return {
-          result: { success: true, action: 'block', ips: affectedIps },
+          result: { 
+            success: true, 
+            action: 'block', 
+            ips: affectedIps,
+            ...(message && { message }),
+          },
           mutation: { type: 'ip-list-changed', ips: affectedIps },
         };
       }
@@ -361,17 +389,47 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         const reason = String(
           args.reason || `Ajoutée via assistant: ${ctx.userMessage}`,
         );
+        const affectedIps: string[] = [];
+        const alreadyWhitelistedIps: string[] = [];
 
         for (const ip of ips) {
+          // Check if IP is already whitelisted
+          if (await this.whitelistService.isWhitelisted(ip)) {
+            alreadyWhitelistedIps.push(ip);
+            continue;
+          }
+
           if (await this.blacklistService.isBlacklisted(ip)) {
             await this.blacklistService.unblock(ip, ctx.userId, ctx.username);
           }
           await this.whitelistService.add(ip, reason, ctx.userId, ctx.username);
+          affectedIps.push(ip);
         }
 
+        // If all IPs were already whitelisted, return appropriate message
+        if (affectedIps.length === 0 && alreadyWhitelistedIps.length > 0) {
+          return {
+            result: {
+              success: false,
+              message: `Les adresses IP suivantes sont déjà dans la whitelist: ${alreadyWhitelistedIps.join(', ')}`,
+              alreadyWhitelisted: alreadyWhitelistedIps,
+            },
+          };
+        }
+
+        // If some IPs were already whitelisted, include warning
+        const message = alreadyWhitelistedIps.length > 0
+          ? `${affectedIps.length} IP(s) ajoutée(s) à la whitelist. ${alreadyWhitelistedIps.length} IP(s) déjà dans la whitelist: ${alreadyWhitelistedIps.join(', ')}`
+          : undefined;
+
         return {
-          result: { success: true, action: 'whitelist-add', ips },
-          mutation: { type: 'ip-list-changed', ips },
+          result: { 
+            success: true, 
+            action: 'whitelist-add', 
+            ips: affectedIps,
+            ...(message && { message }),
+          },
+          mutation: { type: 'ip-list-changed', ips: affectedIps },
         };
       }
 
@@ -812,7 +870,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         conversationId,
         ...(mutation ? { mutation } : {}),
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error calling Gemini API:', error);
 
       // Check for quota exceeded error (429)

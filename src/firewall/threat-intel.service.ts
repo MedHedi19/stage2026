@@ -160,7 +160,10 @@ export class ThreatIntelService {
   private async checkVirusTotal(
     ip: string,
   ): Promise<VirusTotalSourceResult | null> {
-    if (!this.vtApiKey) return null;
+    if (!this.vtApiKey) {
+      this.logger.debug('VirusTotal API key not configured');
+      return null;
+    }
 
     try {
       const response = await lastValueFrom(
@@ -216,7 +219,11 @@ export class ThreatIntelService {
   ): Promise<AlienVaultSourceResult | null> {
     try {
       const headers: Record<string, string> = { Accept: 'application/json' };
-      if (this.otxApiKey) headers['X-OTX-API-KEY'] = this.otxApiKey;
+      if (this.otxApiKey) {
+        headers['X-OTX-API-KEY'] = this.otxApiKey;
+      } else {
+        this.logger.debug('OTX API key not configured');
+      }
 
       const response = await lastValueFrom(
         this.httpService.get(
@@ -264,8 +271,11 @@ export class ThreatIntelService {
   ): Promise<GreyNoiseSourceResult | null> {
     try {
       const headers: Record<string, string> = { Accept: 'application/json' };
-      if (this.greyNoiseApiKey)
+      if (this.greyNoiseApiKey) {
         headers['Authorization'] = `Bearer ${this.greyNoiseApiKey}`;
+      } else {
+        this.logger.debug('GreyNoise API key not configured');
+      }
 
       const response = await lastValueFrom(
         this.httpService.get(
