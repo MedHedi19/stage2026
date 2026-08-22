@@ -320,6 +320,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         );
         const affectedIps: string[] = [];
         const alreadyBlockedIps: string[] = [];
+        const inWhitelistIps: string[] = [];
 
         for (const ip of ips) {
           // Check if IP is already blacklisted
@@ -328,9 +329,12 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
             continue;
           }
 
+          // Check if IP is in whitelist
           if (await this.whitelistService.isWhitelisted(ip)) {
-            await this.whitelistService.remove(ip, ctx.userId, ctx.username);
+            inWhitelistIps.push(ip);
+            continue;
           }
+
           await this.blacklistService.block(
             ip,
             reason,
@@ -341,20 +345,35 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
           affectedIps.push(ip);
         }
 
-        // If all IPs were already blocked, return appropriate message
-        if (affectedIps.length === 0 && alreadyBlockedIps.length > 0) {
+        // If all IPs were already blocked or in whitelist, return appropriate message
+        if (affectedIps.length === 0) {
+          const messages: string[] = [];
+          if (alreadyBlockedIps.length > 0) {
+            messages.push(`déjà bloquées: ${alreadyBlockedIps.join(', ')}`);
+          }
+          if (inWhitelistIps.length > 0) {
+            messages.push(`dans la whitelist: ${inWhitelistIps.join(', ')}`);
+          }
           return {
             result: {
               success: false,
-              message: `Les adresses IP suivantes sont déjà bloquées: ${alreadyBlockedIps.join(', ')}`,
+              message: `Les adresses IP suivantes sont ${messages.join(' et ')}`,
               alreadyBlocked: alreadyBlockedIps,
+              inWhitelist: inWhitelistIps,
             },
           };
         }
 
-        // If some IPs were already blocked, include warning
-        const message = alreadyBlockedIps.length > 0
-          ? `${affectedIps.length} IP(s) bloquée(s). ${alreadyBlockedIps.length} IP(s) déjà bloquée(s): ${alreadyBlockedIps.join(', ')}`
+        // If some IPs were already blocked or in whitelist, include warning
+        const messages: string[] = [];
+        if (alreadyBlockedIps.length > 0) {
+          messages.push(`${alreadyBlockedIps.length} IP(s) déjà bloquée(s): ${alreadyBlockedIps.join(', ')}`);
+        }
+        if (inWhitelistIps.length > 0) {
+          messages.push(`${inWhitelistIps.length} IP(s) dans la whitelist: ${inWhitelistIps.join(', ')}`);
+        }
+        const message = messages.length > 0
+          ? `${affectedIps.length} IP(s) bloquée(s). ${messages.join('. ')}`
           : undefined;
 
         return {
@@ -391,6 +410,7 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
         );
         const affectedIps: string[] = [];
         const alreadyWhitelistedIps: string[] = [];
+        const inBlacklistIps: string[] = [];
 
         for (const ip of ips) {
           // Check if IP is already whitelisted
@@ -399,27 +419,45 @@ Analyse cette alerte et réponds STRICTEMENT en JSON (sans markdown) :
             continue;
           }
 
+          // Check if IP is in blacklist
           if (await this.blacklistService.isBlacklisted(ip)) {
-            await this.blacklistService.unblock(ip, ctx.userId, ctx.username);
+            inBlacklistIps.push(ip);
+            continue;
           }
+
           await this.whitelistService.add(ip, reason, ctx.userId, ctx.username);
           affectedIps.push(ip);
         }
 
-        // If all IPs were already whitelisted, return appropriate message
-        if (affectedIps.length === 0 && alreadyWhitelistedIps.length > 0) {
+        // If all IPs were already whitelisted or in blacklist, return appropriate message
+        if (affectedIps.length === 0) {
+          const messages: string[] = [];
+          if (alreadyWhitelistedIps.length > 0) {
+            messages.push(`déjà dans la whitelist: ${alreadyWhitelistedIps.join(', ')}`);
+          }
+          if (inBlacklistIps.length > 0) {
+            messages.push(`dans la blacklist: ${inBlacklistIps.join(', ')}`);
+          }
           return {
             result: {
               success: false,
-              message: `Les adresses IP suivantes sont déjà dans la whitelist: ${alreadyWhitelistedIps.join(', ')}`,
+              message: `Les adresses IP suivantes sont ${messages.join(' et ')}`,
               alreadyWhitelisted: alreadyWhitelistedIps,
+              inBlacklist: inBlacklistIps,
             },
           };
         }
 
-        // If some IPs were already whitelisted, include warning
-        const message = alreadyWhitelistedIps.length > 0
-          ? `${affectedIps.length} IP(s) ajoutée(s) à la whitelist. ${alreadyWhitelistedIps.length} IP(s) déjà dans la whitelist: ${alreadyWhitelistedIps.join(', ')}`
+        // If some IPs were already whitelisted or in blacklist, include warning
+        const messages: string[] = [];
+        if (alreadyWhitelistedIps.length > 0) {
+          messages.push(`${alreadyWhitelistedIps.length} IP(s) déjà dans la whitelist: ${alreadyWhitelistedIps.join(', ')}`);
+        }
+        if (inBlacklistIps.length > 0) {
+          messages.push(`${inBlacklistIps.length} IP(s) dans la blacklist: ${inBlacklistIps.join(', ')}`);
+        }
+        const message = messages.length > 0
+          ? `${affectedIps.length} IP(s) ajoutée(s) à la whitelist. ${messages.join('. ')}`
           : undefined;
 
         return {

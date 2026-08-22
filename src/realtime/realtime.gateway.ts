@@ -105,6 +105,15 @@ export class RealtimeGateway
               continue;
             }
 
+            // Check if IP is already blacklisted
+            const isBlacklisted = await this.blacklistService.isBlacklisted(srcIp);
+            if (isBlacklisted) {
+              this.logger.log(
+                `IP ${srcIp} is already blacklisted, skipping auto-block`,
+              );
+              continue;
+            }
+
             // Check if SID triggers auto-block
             if (isInAutoBlockList) {
               const description = alert.rule?.description || 'Unknown threat';

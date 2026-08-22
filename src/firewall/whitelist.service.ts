@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { WhitelistEntry } from './entities/whitelist-entry.entity';
@@ -9,6 +9,7 @@ import {
   FirewallListType,
   FirewallAction,
 } from './entities/firewall-history.entity';
+import { BlacklistService } from './blacklist.service';
 
 @Injectable()
 export class WhitelistService {
@@ -20,6 +21,8 @@ export class WhitelistService {
     private readonly firewallService: FirewallService,
     private readonly auditService: AuditService,
     private readonly historyService: FirewallHistoryService,
+    @Inject(forwardRef(() => BlacklistService))
+    private readonly blacklistService: BlacklistService,
   ) {}
 
   /**
@@ -36,6 +39,12 @@ export class WhitelistService {
     userId: number,
     username: string,
   ): Promise<WhitelistEntry> {
+    // Check if IP exists in blacklist
+    const blacklistEntry = await this.blacklistService.isBlacklisted(ip);
+    if (blacklistEntry) {
+      throw new Error(`IP ${ip} exists in blacklist. Remove it from blacklist first.`);
+    }
+
     // Check if IP is already whitelisted (idempotent)
     const existingEntry = await this.whitelistRepository.findOne({
       where: { ip },

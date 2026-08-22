@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, forwardRef, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Like } from 'typeorm';
 import { BlacklistEntry, BlockSource } from './entities/blacklist-entry.entity';
@@ -10,6 +10,7 @@ import {
   FirewallAction,
 } from './entities/firewall-history.entity';
 import { ThreatIntelService } from './threat-intel.service';
+import { WhitelistService } from './whitelist.service';
 
 @Injectable()
 export class BlacklistService {
@@ -22,6 +23,8 @@ export class BlacklistService {
     private readonly auditService: AuditService,
     private readonly historyService: FirewallHistoryService,
     private readonly threatIntelService: ThreatIntelService,
+    @Inject(forwardRef(() => WhitelistService))
+    private readonly whitelistService: WhitelistService,
   ) {}
 
   /**
@@ -47,6 +50,12 @@ export class BlacklistService {
     },
   ): Promise<BlacklistEntry> {
     const effectiveUsername = username || 'system';
+
+    // Check if IP exists in whitelist
+    const whitelistEntry = await this.whitelistService.isWhitelisted(ip);
+    if (whitelistEntry) {
+      throw new Error(`IP ${ip} exists in whitelist. Remove it from whitelist first.`);
+    }
 
     // If threatData or countryCode is missing, attempt quick lookup
     let finalCountryCode = threatData?.countryCode ?? null;
