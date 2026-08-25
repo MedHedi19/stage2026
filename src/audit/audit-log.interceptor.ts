@@ -52,7 +52,11 @@ export class AuditLogInterceptor implements NestInterceptor {
 
           // Extract targetEntity from req.params or req.body if applicable
           let targetEntity: string | undefined = undefined;
-          if (request.params && Object.keys(request.params).length > 0) {
+          if (action === 'Generate report' && request.body) {
+            const reportType = request.body.reportType || 'executive_summary';
+            const fmt = request.body.format || 'pdf';
+            targetEntity = JSON.stringify({ reportType, format: fmt });
+          } else if (request.params && Object.keys(request.params).length > 0) {
             targetEntity = JSON.stringify(request.params);
           } else if (request.body && request.body.username) {
             targetEntity = `user:${request.body.username}`;
