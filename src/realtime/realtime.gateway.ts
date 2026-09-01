@@ -26,6 +26,8 @@ export class RealtimeGateway
   private readonly logger = new Logger(RealtimeGateway.name);
   private seenAlertIds = new Set<string>();
 
+  private isPolling = false;
+
   @WebSocketServer()
   server: Server;
 
@@ -48,10 +50,13 @@ export class RealtimeGateway
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
-  @Interval(3000)
+  @Interval(1000)
   async pollNewAlerts() {
+    if (this.isPolling) return;
+    this.isPolling = true;
+
     try {
-      const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 10 });
+      const alerts = await this.wazuhService.fetchRecentAlerts({ limit: 50 });
       if (!alerts || alerts.length === 0) return;
 
       // On very first run, populate seen set without broadcasting old historical alerts
@@ -70,99 +75,16 @@ export class RealtimeGateway
         this.logger.log(
           `Broadcasting new real-time alert: ${alert.rule?.description || 'Alert'} (${alert.id})`,
         );
+
+        // 1. Instant WebSocket emission to connected dashboards
         if (this.server) {
           this.server.emit('new-alert', alert);
         }
 
-        // Auto-block logic
-        const srcIp = alert.data?.src_ip;
-        if (srcIp) {
-          try {
-            // Extract SID from correct path: alert.data.alert.signature_id (string)
-            const sid = Number(alert.data?.alert?.signature_id);
-            const isInAutoBlockList = AUTO_BLOCK_SIDS.includes(sid);
-
-            // Check whitelist first
-            const isWhitelisted =
-              await this.whitelistService.isWhitelisted(srcIp);
-
-            // Debug logging
-            console.log(
-              '[Auto-Block] srcIp:',
-              srcIp,
-              'sid:',
-              sid,
-              'inAutoBlockList:',
-              isInAutoBlockList,
-              'isWhitelisted:',
-              isWhitelisted,
-            );
-
-            if (isWhitelisted) {
-              this.logger.log(
-                `IP ${srcIp} is whitelisted, skipping auto-block`,
-              );
-              continue;
-            }
-
-            // Check if IP is already blacklisted
-            const isBlacklisted = await this.blacklistService.isBlacklisted(srcIp);
-            if (isBlacklisted) {
-              this.logger.log(
-                `IP ${srcIp} is already blacklisted, skipping auto-block`,
-              );
-              continue;
-            }
-
-            // Check if SID triggers auto-block
-            if (isInAutoBlockList) {
-              const description = alert.rule?.description || 'Unknown threat';
-
-              // Enrich with threat intelligence (optional - don't fail if API is down)
-              let blockReason = `Auto-blocked: ${description}`;
-              let threatData:
-                | {
-                    abuseScore?: number;
-                    abuseCategories?: string;
-                    countryCode?: string;
-                  }
-                | undefined;
-
-              try {
-                const threatInfo = await this.threatIntelService.checkIp(srcIp);
-                if (threatInfo && threatInfo.sources?.abuseipdb) {
-                  const abuseData = threatInfo.sources.abuseipdb;
-                  blockReason += ` (AbuseIPDB score: ${abuseData.score}/100, ${abuseData.totalReports} reports)`;
-                  threatData = {
-                    abuseScore: abuseData.score,
-                    abuseCategories: abuseData.categories.join(','),
-                    countryCode: threatInfo.countryCode,
-                  };
-                }
-              } catch (error: any) {
-                // Threat intel is enrichment only - don't fail the block if it errors
-                this.logger.warn(
-                  `Threat intel check failed for ${srcIp}: ${error.message}`,
-                );
-              }
-
-              await this.blacklistService.block(
-                srcIp,
-                blockReason,
-                BlockSource.AUTO,
-                null,
-                null,
-                threatData,
-              );
-              this.logger.log(`Auto-blocked IP ${srcIp} for SID ${sid}`);
-            }
-          } catch (error: any) {
-            this.logger.error(
-              `Auto-block failed for IP ${srcIp}: ${error.message}`,
-            );
-            // Continue - don't break alert broadcast
-          }
-        }
+        // 2. Non-blocking Auto-block & Threat Intel processing in background
+        this.processAutoBlock(alert).catch((err) =>
+          this.logger.error(`Background auto-block error: ${err.message}`),
+        );
       }
 
       // Keep seenSet size bounded
@@ -172,6 +94,85 @@ export class RealtimeGateway
       }
     } catch (error: any) {
       this.logger.warn(`Realtime polling skipped: ${error.message}`);
+    } finally {
+      this.isPolling = false;
+    }
+  }
+
+  private async processAutoBlock(alert: any) {
+    const srcIp = alert.data?.src_ip;
+    if (!srcIp) return;
+
+    try {
+      // Extract SID from correct path: alert.data.alert.signature_id (string)
+      const sid = Number(alert.data?.alert?.signature_id);
+      const isInAutoBlockList = AUTO_BLOCK_SIDS.includes(sid);
+
+      // Check whitelist first
+      const isWhitelisted =
+        await this.whitelistService.isWhitelisted(srcIp);
+
+      if (isWhitelisted) {
+        this.logger.log(
+          `IP ${srcIp} is whitelisted, skipping auto-block`,
+        );
+        return;
+      }
+
+      // Check if IP is already blacklisted
+      const isBlacklisted = await this.blacklistService.isBlacklisted(srcIp);
+      if (isBlacklisted) {
+        this.logger.log(
+          `IP ${srcIp} is already blacklisted, skipping auto-block`,
+        );
+        return;
+      }
+
+      // Check if SID triggers auto-block
+      if (isInAutoBlockList) {
+        const description = alert.rule?.description || 'Unknown threat';
+
+        // Enrich with threat intelligence (optional - don't fail if API is down)
+        let blockReason = `Auto-blocked: ${description}`;
+        let threatData:
+          | {
+              abuseScore?: number;
+              abuseCategories?: string;
+              countryCode?: string;
+            }
+          | undefined;
+
+        try {
+          const threatInfo = await this.threatIntelService.checkIp(srcIp);
+          if (threatInfo && threatInfo.sources?.abuseipdb) {
+            const abuseData = threatInfo.sources.abuseipdb;
+            blockReason += ` (AbuseIPDB score: ${abuseData.score}/100, ${abuseData.totalReports} reports)`;
+            threatData = {
+              abuseScore: abuseData.score,
+              abuseCategories: abuseData.categories.join(','),
+              countryCode: threatInfo.countryCode,
+            };
+          }
+        } catch (error: any) {
+          this.logger.warn(
+            `Threat intel check failed for ${srcIp}: ${error.message}`,
+          );
+        }
+
+        await this.blacklistService.block(
+          srcIp,
+          blockReason,
+          BlockSource.AUTO,
+          null,
+          null,
+          threatData,
+        );
+        this.logger.log(`Auto-blocked IP ${srcIp} for SID ${sid}`);
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Auto-block failed for IP ${srcIp}: ${error.message}`,
+      );
     }
   }
 }
