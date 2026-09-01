@@ -55,19 +55,23 @@ export class RealtimeGateway
     this.isPolling = true;
 
     try {
-      // Query recent alerts from a rolling 2-minute window (limit 200) to handle out-of-order log timestamps
-      const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
+      // Query recent alerts (limit 100) sorted newest first
       const alerts = await this.wazuhService.fetchRecentAlerts({
-        startDate: twoMinutesAgo,
-        limit: 200,
+        limit: 100,
       });
 
       if (!alerts || alerts.length === 0) return;
 
-      // On very first run, populate seen set without broadcasting old historical alerts
+      const now = Date.now();
+
+      // On initial startup, only mark alerts older than 10 seconds as seen (allowing brand-new alerts to be broadcasted)
       if (this.seenAlertIds.size === 0) {
-        alerts.forEach((alert) => this.seenAlertIds.add(alert.id));
-        return;
+        alerts.forEach((alert) => {
+          const alertTime = new Date(alert.timestamp).getTime();
+          if (!isNaN(alertTime) && alertTime < now - 10000) {
+            this.seenAlertIds.add(alert.id);
+          }
+        });
       }
 
       // Find new alerts not yet broadcasted
