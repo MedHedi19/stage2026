@@ -26,7 +26,6 @@ export class RealtimeGateway
   private readonly logger = new Logger(RealtimeGateway.name);
   private seenAlertIds = new Set<string>();
   private isPolling = false;
-  private lastPollTime: string = new Date(Date.now() - 30000).toISOString();
 
   @WebSocketServer()
   server: Server;
@@ -56,50 +55,46 @@ export class RealtimeGateway
     this.isPolling = true;
 
     try {
-      // Query alerts starting from lastPollTime to prevent high-volume logs from drowning out security alerts
+      // Query recent alerts from a rolling 2-minute window (limit 200) to handle out-of-order log timestamps
+      const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
       const alerts = await this.wazuhService.fetchRecentAlerts({
-        startDate: this.lastPollTime,
+        startDate: twoMinutesAgo,
         limit: 200,
       });
 
-      if (alerts && alerts.length > 0) {
-        // Find new alerts not yet broadcasted
-        const newAlerts = alerts
-          .filter((alert) => !this.seenAlertIds.has(alert.id))
-          .reverse();
+      if (!alerts || alerts.length === 0) return;
 
-        for (const alert of newAlerts) {
-          this.seenAlertIds.add(alert.id);
-          this.logger.log(
-            `Broadcasting new real-time alert: ${alert.rule?.description || 'Alert'} (${alert.id})`,
-          );
+      // On very first run, populate seen set without broadcasting old historical alerts
+      if (this.seenAlertIds.size === 0) {
+        alerts.forEach((alert) => this.seenAlertIds.add(alert.id));
+        return;
+      }
 
-          // 1. Instant WebSocket emission to connected dashboards
-          if (this.server) {
-            this.server.emit('new-alert', alert);
-          }
+      // Find new alerts not yet broadcasted
+      const newAlerts = alerts
+        .filter((alert) => !this.seenAlertIds.has(alert.id))
+        .reverse();
 
-          // 2. Non-blocking Auto-block & Threat Intel processing in background
-          this.processAutoBlock(alert).catch((err) =>
-            this.logger.error(`Background auto-block error: ${err.message}`),
-          );
+      for (const alert of newAlerts) {
+        this.seenAlertIds.add(alert.id);
+        this.logger.log(
+          `Broadcasting new real-time alert: ${alert.rule?.description || 'Alert'} (${alert.id})`,
+        );
+
+        // 1. Instant WebSocket emission to connected dashboards
+        if (this.server) {
+          this.server.emit('new-alert', alert);
         }
 
-        // Advance lastPollTime safely (1s safety margin before newest timestamp)
-        const newestTimestamp = alerts[0]?.timestamp;
-        if (newestTimestamp) {
-          const newestDate = new Date(newestTimestamp);
-          if (!isNaN(newestDate.getTime())) {
-            this.lastPollTime = new Date(
-              newestDate.getTime() - 1000,
-            ).toISOString();
-          }
-        }
+        // 2. Non-blocking Auto-block & Threat Intel processing in background
+        this.processAutoBlock(alert).catch((err) =>
+          this.logger.error(`Background auto-block error: ${err.message}`),
+        );
       }
 
       // Keep seenSet size bounded
-      if (this.seenAlertIds.size > 1000) {
-        const recent = Array.from(this.seenAlertIds).slice(-500);
+      if (this.seenAlertIds.size > 2000) {
+        const recent = Array.from(this.seenAlertIds).slice(-1000);
         this.seenAlertIds = new Set(recent);
       }
     } catch (error: any) {
